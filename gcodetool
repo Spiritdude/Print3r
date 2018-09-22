@@ -1,0 +1,92 @@
+#!/usr/bin/perl
+
+# == Gcodetool, written by Rene K. Mueller <spiritdude@gmail.com>
+#
+# License: GPLv3
+#
+# Description:
+#   Command line tool to print gcode without GUI
+#
+# History:
+# 2018/09/22: 0.0.1: first version, barely functional
+
+use Time::HiRes qw(time sleep);
+
+my $conf;
+
+$conf{port} = '/dev/ttyUSB0';
+
+my %s2l = ('q' => 'quiet', 'v' => 'verbose');
+
+foreach (@ARGV) {
+   $conf{$s2l{$1}}++, next if(/^-(\w+)$/);
+   $conf{$1}++, next if(/^--(\w+)$/);
+   $conf{$1} = $2, next if(/^--(\w+)=(.*)$/);
+   push(@f,$_);
+}
+
+if($conf{verbose}) {
+   foreach my $k (keys %conf) {
+      print "$k = \"$conf{$k}\"\n";
+   }
+   print "files: @f\n";
+}   
+
+$| = 1;
+
+use Device::SerialPort;
+$com = Device::SerialPort->new($conf{port}, 1);
+if(!$com) {
+   die "$0: ERROR: can't open $conf{port}: $!";
+}
+$com->baudrate($conf{baudrate}*1) if($conf{baudrate});
+
+my $st = time();
+
+foreach my $fn (@f) {
+   open(my $fh,"<",$fn);
+   next if(!$fh);
+
+   my $pos = 0;
+   my $pos_tot = (stat($fn))[7];
+   my $lcur_z;
+   my $cur_z = 0;
+   my $layer = 0;
+
+   while(<$fh>) {
+      $pos += length($_);
+      next if(/^;/ || /^\s*$/);
+
+      my $eta = (time()-$st)/$pos*$pos_tot;     # -- total time
+      $eta = (($st + $eta) - time()) / 60;      # -- relative
+      my $now = (time()-$st)/60;
+
+      $cur_z = $1 if(/G1 Z(\S+)/);
+      $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
+
+      printf "> $fn: %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z = %.2fmm, layer #%d%s",int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$conf{verbose}?"\n":"\r"
+         if(!$conf{quiet});
+
+      print "send: '$_'" if($conf{verbose});
+      $com->write($_);
+      my $await_ok = ($_=~/^[GM]/);
+      while(1) {
+         (undef,$in,$out,undef) = $com->status();
+         if($in) {
+            print "# in:$in out:$out\n" if($conf{verbose}>1);
+            ($n,$rd) = $com->read($in);
+            if($n) {
+               print "recv: '$rd'\n" if($conf{verbose});
+               last if($rd =~ /ok/i);
+               last if($rd =~ /start/i);
+            }
+            sleep 0.05;
+         } else {
+            last if(!$await_ok);
+         }
+      }
+   }
+   close $fh;
+   print "\n" if(!$conf{quiet});
+}
+
