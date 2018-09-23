@@ -24,7 +24,12 @@ $conf{device} = '/dev/ttyUSB0';
 
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','-d'=>'device');
 
-my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1);
+my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1);
+
+my $printer;
+$printer->{build}->{x} = 210;
+$printer->{build}->{y} = 210;
+$printer->{build}->{z} = 180;
 
 foreach (@ARGV) {
    $conf{$s2l{$1}}++, next if(/^-(\w+)$/);
@@ -44,6 +49,15 @@ if($conf{verbose}) {
 
 $| = 1;
 
+if($conf{printer}) {       # -- printer profile linked
+   my $c = readSlicerConf($conf{printer});
+   if($c->{bed_shape}) {
+      my(@c) = split(/,/,$c->{bed_shape});
+      ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$c[2]);
+   }
+   print "bed: $printer->{build}->{x}x$printer->{build}->{y} [mm]\n" if($conf{verbose});
+}
+
 if($cmd eq 'analyze') {
    foreach my $fn (@f) {
       my $i;
@@ -55,6 +69,18 @@ if($cmd eq 'analyze') {
          print "$0: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
       }
       print toJSON($i) if($i);
+   }
+
+} elsif($cmd eq 'render') {
+   foreach my $fn (@f) {
+      my $i;
+      if($fn =~ /\.stl$/i) {
+         $i = renderSTL($fn,\%conf);
+      } elsif($fn =~ /\.gcode$/i) {
+         $i = renderGcode($fn,\%conf);
+      } else {
+         print "$0: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
+      }
    }
    
 } elsif($cmd eq 'slice') {
@@ -69,7 +95,7 @@ if($cmd eq 'analyze') {
          $conf{output} = "/tmp/gcodetool-$$.gcode";
          sliceSTL($fn,\%conf);
          $conf{filename} = $fn;
-         $rm = $conf{output};
+         $fn = $rm = $conf{output};
       }
       printGcode($fn,\%conf);
       unlink $rm if($rm);
@@ -90,6 +116,8 @@ if($cmd eq 'analyze') {
       print <file.stl>        slice + print in one go
       analyze <file.stl>
       analyze <file.gcode>
+      render <file.stl>
+      render <file.gcode>
       help
    
    examples:
@@ -103,19 +131,193 @@ if($cmd eq 'analyze') {
 
 # ---------------------------------------------------------------------------------------------------------------
 
+sub renderSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   if(!$fn=~/\.stl$/i) {
+      print "$0: ERROR: you can only render .stl files but not <$fn>, skipped\n";
+      return;
+   }
+   my $tmp = "./gcodetool-$$.stl";
+   if(fork()==0) {
+      $conf{output} = "sample.png" unless($conf{output});
+      if(open(my $fh,">",$tmp)) {
+         print $fh "import(\"$fn\");\n"; 
+         close $fh;
+         unless($conf{verbose}) {
+            close STDERR;
+            close STDOUT;
+         }
+         unlink $conf{output};
+         exec("openscad","-o",$conf{output},"--imgsize","512,512",$tmp);
+      }
+   }
+   wait();
+   unlink $tmp;
+}
+
+sub _moveTo {
+   my($p) = @_;
+   print "$p->{x} $p->{y} $p->{z}\n";
+}
+
+sub _printTo {
+   my($p) = @_;
+   print "$p->{x} $p->{y} $p->{z}\n";
+}
+
+sub _3dto2d {
+   my($p,$pe,$im) = @_;
+   my($x,$y);
+   my $view;
+   my $loc;
+   
+   $view->{x} = $printer->{build}->{x} / 2;
+   $view->{y} = -$printer->{build}->{y} * 0.8;
+   $view->{z} = $printer->{build}->{z} * 0.8;
+   
+   $loc->{x} = 0; #$printer->{build}->{x} / 2;
+   $loc->{y} = 0; #$printer->{build}->{y} / 2;
+   $loc->{z} = 0;
+   
+   if($pe eq 'side') {
+      $x = $p->{y}*$im->{width}/$printer->{build}->{y};
+      $y = $im->{height}-$p->{z}*$im->{height}/$printer->{build}->{z};
+   } elsif($pe eq 'front') {
+      $x = $p->{x}*$im->{width}/$printer->{build}->{x};
+      $y = $im->{height}-$p->{z}*$im->{height}/$printer->{build}->{z};
+   } else {
+      if(1) {
+         my $x_ = $p->{x} - $view->{x} - $loc->{x};
+         my $y_ = $p->{z} - $view->{z} - $loc->{y};
+         my $z_ = $p->{y} - $view->{y} - $loc->{z};
+         $x = (+($x_ / $z_)) * $im->{width}/2 + $im->{width}/2;
+         $y = (-($y_ / $z_)) * $im->{height}/2 + $im->{height}/2;
+      } else {
+         $x = $p->{x}*$im->{width}/$printer->{build}->{x} + $p->{z}*$im->{height}/$printer->{build}->{z}/2;
+         $y = $im->{height}-$p->{y}*$im->{height}/$printer->{build}->{y} - $p->{z}*$im->{height}/$printer->{build}->{z}/3;
+      }
+   }
+   ($x+$im->{xoff},$y+$im->{yoff});
+}
+
+sub renderGcode {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   use GD;
+   my($w,$h) = (512+256,512);
+   my $im = new GD::Image($w,$h);
+   my $col;
+
+   $col->{bg} = $im->colorAllocate(255,255,255);
+   $col->{extrusion} = $im->colorAllocate(128,200,128);
+   $col->{box} = $im->colorAllocate(128,128,128);
+   $col->{bed} = $im->colorAllocate(210,210,210);
+   
+   foreach my $r (0..200) {
+      my $n = $im->colorAllocate($r*0.5,20+$r,$r*0.5);
+      $col->{depth} = $n unless($col->{depth});
+   }
+
+   my($w0,$h0);
+   my($w1,$h1);
+   my($w2,$h2);
+   
+   if($printer->{build}->{x} >= $printer->{build}->{y}) {
+      $w0 = 512, $h0 = $w0 / $printer->{build}->{x} * $printer->{build}->{y};
+      $w1 = 512, $h1 = $w1 / $printer->{build}->{x} * $printer->{build}->{z};
+      $w2 = 512, $h2 = $w2 / $printer->{build}->{y} * $printer->{build}->{z};
+   } elsif($printer->{build}->{x} < $printer->{build}->{y}) {
+      $h0 = 512, $w0 = $h0 / $printer->{build}->{y} * $printer->{build}->{x};
+   }
+   
+   $im->rectangle(0,0,$w0,$h0,$col->{bed});
+   $im->rectangle(512,0,512+$w1/2,$h1/2,$col->{bed});
+   $im->rectangle(512,256,512+$w2/2,256+$h2/2,$col->{bed});
+   
+   $im->line(512,0,512,512,$col->{box});
+   $im->line(512,256,512+256,256,$col->{box});
+   $im->string(gdSmallFont,512+5,5,"front",$col->{box});
+   $im->string(gdSmallFont,512+5,256+5,"side",$col->{box});
+
+   $im->clip(0,0,512,512);
+   $im->line(
+      _3dto2d({x=>0,y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),
+      _3dto2d({x=>$printer->{build}->{x},y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
+   $im->line(
+      _3dto2d({x=>$printer->{build}->{x},y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),
+      _3dto2d({x=>$printer->{build}->{x},y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
+   $im->line(
+      _3dto2d({x=>$printer->{build}->{x},y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),
+      _3dto2d({x=>0,y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
+   $im->line(
+      _3dto2d({x=>0,y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),
+      _3dto2d({x=>0,y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
+
+   $im->clip(0,0,512+256,512);
+   
+   if(!$fn=~/\.gcode$/i) {
+      print "$0: ERROR: you can only render .gcode files but not <$fn>, skipped\n";
+      return;
+   }
+   open(my $fh,"<",$fn);
+   return if(!$fh);
+
+   my($p,$lp);
+   foreach my $i (qw(x y z e f)) {
+      $lp->{$i} = $p->{$i} = 0;
+   }
+   while(<$fh>) {
+      chop;
+      next if(/^;/ || /^\s*$/);
+      s/;.*$//;
+      s/\*.*$//;
+      my($c,$id) = (/^([MG])(\d+)/);
+      if($c eq 'G' && $id == 1) {      # -- extrude
+         my $px;
+         foreach my $pa (split(/ /)) {
+            $px->{lc($1)} = $2 if($pa=~/([XYZEF])([\d\.]+)/);
+         }
+         foreach my $k (keys %$px) {      # -- update $p
+            $p->{$k} = $px->{$k};
+         }
+         if($px->{e}) {                   # -- move or extrude
+            #_printTo($p);
+            #$im->line($lx,$ly,$x,$y,$col->{extrusion});
+            $im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$p->{z}/$printer->{build}->{z}*200+$col->{depth});
+            $im->line(_3dto2d($lp,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),_3dto2d($p,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),$col->{extrusion});
+            $im->line(_3dto2d($lp,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),_3dto2d($p,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),$col->{extrusion});
+         } else {
+            #_moveTo($p);
+         }
+         foreach my $k (keys %$p) {
+            $lp->{$k} = $p->{$k};
+         }
+      }
+   }
+   close $fh;
+   
+   $conf{output} = "sample.png" unless($conf{output});
+   open(my $fh,">",$conf{output});
+   binmode($fh);
+   print $fh $im->png();
+   close $fh;
+}
+
 sub sliceSTL {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
 
    if(!$fn=~/\.stl$/i) {
       print "$0: ERROR: you can only slice .stl files but not <$fn>, skipped\n";
-      next;
+      return;
    }
    my $tmp = "/tmp/gcodetool-$$.gcode";
    my $rm;
    
    my @a = ('slic3r');
-   push(@a,'--load',"printers/$conf{printer}") if($conf{printer});
+   push(@a,'--load',$conf{printer}) if($conf{printer});
    push(@a,'--output',$tmp), $rm = $tmp unless($conf{output});
 
 	if(fork()==0) {
@@ -125,11 +327,13 @@ sub sliceSTL {
       }
       push(@a,$fn);
       print "exec: @a\n" if($conf{verbose});
-      close STDERR;     # -- make it silent
-      close STDOUT;     # -- make it silent
+      unless($conf{verbose}) {
+         close STDERR;
+         close STDOUT;
+      }
       exec(@a);
    }
-   print "slice $fn, ";
+   print "slice $fn: ";
    wait();
    print "done.\n";
    unlink $rm if($rm);
@@ -186,6 +390,16 @@ sub printGcode {
    my $cur_z = 0;
    my $layer = 0;
 
+   $SIG{INT} = sub {
+      print "\n\taborting print.\n";
+      open(my $fh,"<","custom/abort.gcode");
+      while(<$fh>) {
+         $com->write($_);
+      }
+      close($fh);
+      exit -1;
+   };
+   
    while(<$fh>) {
       $pos += length($_);
      
@@ -231,4 +445,19 @@ sub printGcode {
    close $fh;
    print "\n" if(!$conf{quiet});
 }
+
+sub readSlicerConf {
+   my($fn) = @_;
+   my $i;
+   if(open(my $fh,"<",$fn)) {
+      while(<$fh>) {
+         chop;
+         next if(/^\s*#/);
+         $i->{$1} = $2 if(/^(\w+)\s*=\s*(\S.*)$/);
+      }
+      close $fh;
+   }
+   return $i;
+}
+
 
