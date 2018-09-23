@@ -5,47 +5,180 @@
 # License: GPLv3
 #
 # Description:
-#   Command line tool to print gcode without GUI
+#  Command line tool to print gcode to 3d printers without GUI
+#  - Slicing is done with slic3r backend
+#  - Printing is done via USB
 #
 # History:
-# 2018/09/22: 0.0.1: first version, barely functional
+# 2018/09/22: 0.0.1: first version, barely functional: slice, print and slice+print works
 
+use strict;
 use Time::HiRes qw(time sleep);
+use Device::SerialPort;
 
-my $conf;
+my $VERSION = '0.0.1';
+my %conf;
+my @f;
 
-$conf{port} = '/dev/ttyUSB0';
+$conf{device} = '/dev/ttyUSB0';
 
-my %s2l = ('q' => 'quiet', 'v' => 'verbose');
+my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','-d'=>'device');
+
+my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1);
 
 foreach (@ARGV) {
    $conf{$s2l{$1}}++, next if(/^-(\w+)$/);
-   $conf{$1}++, next if(/^--(\w+)$/);
-   $conf{$1} = $2, next if(/^--(\w+)=(.*)$/);
+   $conf{$1}++, next if(/^--([\w\-]+)$/);
+   $conf{$1} = $2, next if(/^--([\w\-]+)=(.*)$/);
    push(@f,$_);
 }
 
+my $cmd = shift(@f);
+
 if($conf{verbose}) {
    foreach my $k (keys %conf) {
-      print "$k = \"$conf{$k}\"\n";
+      print "$k = $conf{$k}\n";
    }
    print "files: @f\n";
 }   
 
 $| = 1;
 
-use Device::SerialPort;
-$com = Device::SerialPort->new($conf{port}, 1);
-if(!$com) {
-   die "$0: ERROR: can't open $conf{port}: $!";
+if($cmd eq 'analyze') {
+   foreach my $fn (@f) {
+      my $i;
+      if($fn =~ /\.stl$/i) {
+         $i = readSTL($fn);
+      } elsif($fn =~ /\.gcode$/i) {
+         $i = readGcode($fn);
+      } else {
+         print "$0: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
+      }
+      print toJSON($i) if($i);
+   }
+   
+} elsif($cmd eq 'slice') {
+   foreach my $fn (@f) {
+      sliceSTL($fn,\%conf);
+   }
+   
+} elsif($cmd eq 'print') {
+   foreach my $fn (@f) {
+      my $rm;
+      if($fn=~/\.stl$/i) {
+         $conf{output} = "/tmp/gcodetool-$$.gcode";
+         sliceSTL($fn,\%conf);
+         $conf{filename} = $fn;
+         $rm = $conf{output};
+      }
+      printGcode($fn,\%conf);
+      unlink $rm if($rm);
+   }
+
+} else {
+   print "$0 $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
+
+   options:
+      --verbose or -v         increase verbosity
+      --quiet or -q           no output except fatal errors
+      --baudrate=<n>          set baudrate
+      --device=<d>            define device, default: $conf{device}
+      
+   commands:
+      slice <file.stl>        slice stl into gcode
+      print <file.gcode>      print gcode
+      print <file.stl>        slice + print in one go
+      analyze <file.stl>
+      analyze <file.gcode>
+      help
+   
+   examples:
+      $0 --load=my_printer.ini slice cube.stl
+      $0 --load=my_printer.ini --output=test.gcode slice cube.stl
+      $0 --device=/dev/ttyUSB1 print test.gcode
+      $0 --device=/dev/ttyUSB1 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+
+";
+}   
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub sliceSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   if(!$fn=~/\.stl$/i) {
+      print "$0: ERROR: you can only slice .stl files but not <$fn>, skipped\n";
+      next;
+   }
+   my $tmp = "/tmp/gcodetool-$$.gcode";
+   my $rm;
+   
+   my @a = ('slic3r');
+   push(@a,'--load',"printers/$conf{printer}") if($conf{printer});
+   push(@a,'--output',$tmp), $rm = $tmp unless($conf{output});
+
+	if(fork()==0) {
+      foreach my $k (keys %conf) {
+         next if($intern{$k});
+         push(@a,"--$k",$conf{$k});
+      }
+      push(@a,$fn);
+      print "exec: @a\n" if($conf{verbose});
+      close STDERR;     # -- make it silent
+      close STDOUT;     # -- make it silent
+      exec(@a);
+   }
+   print "slice $fn, ";
+   wait();
+   print "done.\n";
+   unlink $rm if($rm);
 }
-$com->baudrate($conf{baudrate}*1) if($conf{baudrate});
 
-my $st = time();
+sub readGcode {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $i = {};
 
-foreach my $fn (@f) {
    open(my $fh,"<",$fn);
-   next if(!$fh);
+   return if(!$fh);
+   $i->{filename} = $fn;
+
+   while(<$fh>) {
+   }
+   close $fh;
+   return $i;
+}
+
+sub readSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $i = {};
+
+   open(my $fh,"<",$fn);
+   return if(!$fh);
+   $i->{filename} = $fn;
+
+   while(<$fh>) {
+   }
+   close $fh;
+   return $i;
+}
+
+sub printGcode {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $com = Device::SerialPort->new($conf{device}, 1);
+   
+   if(!$com) {
+      die "$0: ERROR: can't open $conf{device}: $!";
+   }
+   $com->baudrate($conf{baudrate}*1) if($conf{baudrate});
+   
+   my $st = time();
+   
+   open(my $fh,"<",$fn);
+   return if(!$fh);
 
    my $pos = 0;
    my $pos_tot = (stat($fn))[7];
@@ -55,26 +188,34 @@ foreach my $fn (@f) {
 
    while(<$fh>) {
       $pos += length($_);
+     
       next if(/^;/ || /^\s*$/);
 
-      my $eta = (time()-$st)/$pos*$pos_tot;     # -- total time
-      $eta = (($st + $eta) - time()) / 60;      # -- relative
+      my $eta = (time()-$st) / $pos * $pos_tot;     # -- total time
+      $eta = (($st + $eta) - time()) / 60;          # -- relative
       my $now = (time()-$st)/60;
 
+      # -- rudimentary catch layer changes, if small change then it's a layer change
       $cur_z = $1 if(/G1 Z(\S+)/);
       $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
 
-      printf "> $fn: %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z = %.2fmm, layer #%d%s",int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$conf{verbose}?"\n":"\r"
+      # -- status line
+      printf "print %-20s: %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z=%.2fmm, layer #%d%s",
+         $conf{filename} || $fn,int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$conf{verbose}?"\n":"\r"
          if(!$conf{quiet});
 
       print "send: '$_'" if($conf{verbose});
+
       $com->write($_);
+
       my $await_ok = ($_=~/^[GM]/);
+
       while(1) {
+         my($in,$out);
          (undef,$in,$out,undef) = $com->status();
          if($in) {
             print "# in:$in out:$out\n" if($conf{verbose}>1);
-            ($n,$rd) = $com->read($in);
+            my($n,$rd) = $com->read($in);
             if($n) {
                print "recv: '$rd'\n" if($conf{verbose});
                last if($rd =~ /ok/i);
@@ -83,6 +224,7 @@ foreach my $fn (@f) {
             sleep 0.05;
          } else {
             last if(!$await_ok);
+            sleep 0.05;
          }
       }
    }
