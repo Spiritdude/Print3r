@@ -10,32 +10,43 @@
 #  - Printing is done via USB
 #
 # History:
+# 2018/09/24: 0.0.2: 'print' of scad, stl and gcode, 'render' of scad, stl and gcode
 # 2018/09/22: 0.0.1: first version, barely functional: slice, print and slice+print works
 
 use strict;
 use Time::HiRes qw(time sleep);
 use Device::SerialPort;
 
-my $VERSION = '0.0.1';
+my $NAME = "Gcodetool";
+my $VERSION = '0.0.2';
 my %conf;
 my @f;
+
+my($me) = ($0=~/\/([^\/]+)/);
 
 $conf{device} = '/dev/ttyUSB0';
 
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','-d'=>'device');
 
-my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1);
+my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1);
 
 my $printer;
 $printer->{build}->{x} = 210;
 $printer->{build}->{y} = 210;
 $printer->{build}->{z} = 180;
 
+$conf{baudrate} = 115200;
+
 foreach (@ARGV) {
    $conf{$s2l{$1}}++, next if(/^-(\w+)$/);
    $conf{$1}++, next if(/^--([\w\-]+)$/);
    $conf{$1} = $2, next if(/^--([\w\-]+)=(.*)$/);
    push(@f,$_);
+}
+
+if($conf{version}) {
+   print "$NAME $VERSION\n";
+   exit 0;
 }
 
 my $cmd = shift(@f);
@@ -52,10 +63,17 @@ $| = 1;
 if($conf{printer}) {       # -- printer profile linked
    my $c = readSlicerConf($conf{printer});
    if($c->{bed_shape}) {
-      my(@c) = split(/,/,$c->{bed_shape});
-      ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$c[2]);
+      my(@co) = split(/,/,$c->{bed_shape});
+      ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$co[2]);
    }
-   print "bed: $printer->{build}->{x}x$printer->{build}->{y} [mm]\n" if($conf{verbose});
+   foreach my $k (keys %conf) {     # -- transfer command-line args to slicer config
+      next if($intern{$k});
+      my $k_ = $k; $k_ =~ s/-/_/g;
+      $c->{$k_} = $conf{$k};
+   }
+   foreach my $k (keys %$c) {       # -- transfer slicer config to printer settings (slicer independent)
+      $printer->{$k} = $c->{$k};
+   }
 }
 
 if($cmd eq 'analyze') {
@@ -66,77 +84,155 @@ if($cmd eq 'analyze') {
       } elsif($fn =~ /\.gcode$/i) {
          $i = readGcode($fn);
       } else {
-         print "$0: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
+         print "$me: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
       }
       print toJSON($i) if($i);
    }
 
 } elsif($cmd eq 'render') {
+   header();
    foreach my $fn (@f) {
       my $i;
-      if($fn =~ /\.stl$/i) {
+      my @rm;
+      if($fn =~ /\.scad$/i) {
+         $i = renderScad($fn,\%conf);
+      } elsif($fn =~ /\.stl$/i) {
          $i = renderSTL($fn,\%conf);
       } elsif($fn =~ /\.gcode$/i) {
          $i = renderGcode($fn,\%conf);
       } else {
-         print "$0: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
+         print "$me: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
       }
+      unlink @rm if(@rm);
    }
    
 } elsif($cmd eq 'slice') {
+   header();
    foreach my $fn (@f) {
       sliceSTL($fn,\%conf);
    }
    
 } elsif($cmd eq 'print') {
+   header();
    foreach my $fn (@f) {
-      my $rm;
+      my(@rm);
+      if($fn=~/\.scad$/i) {
+         $conf{output} = "/tmp/gcodetool-$$.stl";
+         scadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         push(@rm,$fn);
+      }
       if($fn=~/\.stl$/i) {
          $conf{output} = "/tmp/gcodetool-$$.gcode";
          sliceSTL($fn,\%conf);
          $conf{filename} = $fn;
-         $fn = $rm = $conf{output};
+         $fn = $conf{output};
+         push(@rm,$fn);
       }
       printGcode($fn,\%conf);
-      unlink $rm if($rm);
+      unlink @rm if(@rm);
    }
 
 } else {
-   print "$0 $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
+   print "$me $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v         increase verbosity
       --quiet or -q           no output except fatal errors
-      --baudrate=<n>          set baudrate
+      --baudrate=<n>          set baudrate, default: $conf{baudrate}
       --device=<d>            define device, default: $conf{device}
+      --printer=<config.ini>  slic3r config of printer
+      --version               display version and exit
       
    commands:
       slice <file.stl>        slice stl into gcode
       print <file.gcode>      print gcode
-      print <file.stl>        slice + print in one go
-      analyze <file.stl>
+         print <file.stl>     slice & print in one go
+         print <file.scad>    convert, slice & print in one go
       analyze <file.gcode>
-      render <file.stl>
-      render <file.gcode>
+         analyze <file.stl>
+      render <file.gcode>     render an image
+         render <file.stl>
+         render <file.scad>
       help
    
    examples:
-      $0 --load=my_printer.ini slice cube.stl
-      $0 --load=my_printer.ini --output=test.gcode slice cube.stl
-      $0 --device=/dev/ttyUSB1 print test.gcode
-      $0 --device=/dev/ttyUSB1 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      $me --printer=my_printer.ini slice cube.stl
+      $me --printer=my_printer.ini --layer-height=0.2 --output=test.gcode slice cube.stl
+      $me --device=/dev/ttyUSB1 print test.gcode
+      $me --device=/dev/ttyUSB1 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      $me --printer=my_printer.ini print cube.scad
 
 ";
 }   
 
 # ---------------------------------------------------------------------------------------------------------------
 
+sub header {
+   if(!$conf{quiet}) {
+      print "== $NAME $VERSION == https://github.com/Spiritdude/Gcodetool\n";
+      print "$me: conf: device $conf{device}, bed $printer->{build}->{x}x$printer->{build}->{y}mm";
+      print ", nozzle/d $printer->{nozzle_diameter}mm" if($printer->{nozzle_diameter});
+      print ", layer height $printer->{layer_height}mm" if($printer->{layer_height});
+      print ", filament/d $printer->{filament_diameter}mm" if($printer->{filament_diameter});
+      print "\n";
+   }
+}
+
+sub scadToSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   
+   if(fork()==0) {
+      $conf{output} = "sample.stl" unless($conf{output});
+      unlink $conf{output};
+      unless($conf{verbose}) {
+         close STDOUT;
+         close STDERR;
+      }
+      exec('openscad','-o',$conf{output},$fn);
+   }
+   print "$me: convert scad to stl: ";
+   wait();
+   if($?) {
+      print "ERROR (bad options/arguments?)\n";
+   } else {
+      print "done.\n";
+   }
+}
+
+sub renderScad {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   if(!$fn=~/\.scad$/i) {
+      print "$me: ERROR: you can only render .scad files but not <$fn>, skipped\n";
+      return;
+   }
+   if(fork()==0) {
+      $conf{output} = "sample.png" unless($conf{output});
+      unless($conf{verbose}) {
+         close STDERR;
+         close STDOUT;
+      }
+      unlink $conf{output};
+      exec("openscad","-o",$conf{output},"--imgsize=512,512",$fn);
+   }
+   print "render png: ";
+   wait();
+   if($?) {
+      print "ERROR (bad options/arguments?)\n";
+   } else {
+      print "done.\n";
+   }
+}
+
 sub renderSTL {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
 
    if(!$fn=~/\.stl$/i) {
-      print "$0: ERROR: you can only render .stl files but not <$fn>, skipped\n";
+      print "$me: ERROR: you can only render .stl files but not <$fn>, skipped\n";
       return;
    }
    my $tmp = "./gcodetool-$$.stl";
@@ -153,8 +249,14 @@ sub renderSTL {
          exec("openscad","-o",$conf{output},"--imgsize","512,512",$tmp);
       }
    }
+   print "render stl: ";
    wait();
    unlink $tmp;
+   if($?) {
+      print "ERROR (bad options/arguments?)\n";
+   } else {
+      print "done.\n";
+   }
 }
 
 sub _moveTo {
@@ -258,7 +360,7 @@ sub renderGcode {
    $im->clip(0,0,512+256,512);
    
    if(!$fn=~/\.gcode$/i) {
-      print "$0: ERROR: you can only render .gcode files but not <$fn>, skipped\n";
+      print "$me: ERROR: you can only render .gcode files but not <$fn>, skipped\n";
       return;
    }
    open(my $fh,"<",$fn);
@@ -310,15 +412,18 @@ sub sliceSTL {
    my(%conf) = %{@_[0]};
 
    if(!$fn=~/\.stl$/i) {
-      print "$0: ERROR: you can only slice .stl files but not <$fn>, skipped\n";
+      print "$me: ERROR: you can only slice .stl files but not <$fn>, skipped\n";
       return;
    }
    my $tmp = "/tmp/gcodetool-$$.gcode";
    my $rm;
    
    my @a = ('slic3r');
+
+   # -- compose argument list for slic3r
    push(@a,'--load',$conf{printer}) if($conf{printer});
    push(@a,'--output',$tmp), $rm = $tmp unless($conf{output});
+   push(@a,'--print-center',int($printer->{build}->{x}*(rand()*0.5+0.5/2)).",".int($printer->{build}->{y}*(rand()*0.5+0.5/2))) if($conf{'random-placement'});
 
 	if(fork()==0) {
       foreach my $k (keys %conf) {
@@ -333,9 +438,21 @@ sub sliceSTL {
       }
       exec(@a);
    }
-   print "slice $fn: ";
+   print "$me: slice stl to gcode: ";
    wait();
-   print "done.\n";
+   if($?) {
+      print "ERROR (bad options/arguments?)\n";
+   } else {
+      open(my $fh,$conf{output});   # -- try to retrieve filament usage near end of .gcode file
+      seek($fh,4096,-1);
+      my $fu;
+      while(<$fh>) {
+         $fu = $1, last if(/filament used = ([\d\.]+)/);
+      }
+      close $fh;
+      printf "filament usage %.2fcm, ",$fu/10 if($fu);
+      print "done.\n";
+   }
    unlink $rm if($rm);
 }
 
@@ -375,10 +492,59 @@ sub printGcode {
    my $com = Device::SerialPort->new($conf{device}, 1);
    
    if(!$com) {
-      die "$0: ERROR: can't open $conf{device}: $!";
+      die "$me: ERROR: can't open $conf{device}";
    }
-   $com->baudrate($conf{baudrate}*1) if($conf{baudrate});
    
+   if($conf{baudrate}) {
+      $com->baudrate($conf{baudrate}*1);
+
+   } else {
+      # -- probe baudrate
+      my $bb;
+      print "$me: print: configure serial\r" if(!$conf{quiet});
+      foreach my $b (reverse(2400, 9600, 19200, 38400, 57600, 115200, 250000, 500000, 1000000)) {
+         my $st = time();
+
+         $com->baudrate($b);
+
+         print "probe $b\n" if($conf{verbose}>1);
+
+         $com->purge_all();
+         $com->lookclear();
+         
+         $com->write("M115\n");
+
+         sleep 0.2;
+
+         while(1) {
+            my($a,$in,$out,$x) = $com->status();
+            if($in>0) {
+               my($n,$rd) = $com->read($in);
+               $rd =~ s/[\t\r\n]//g;
+               print "> $rd\n" if($conf{verbose}>2);
+               if($rd=~/echo/) {
+                  $bb = $b;
+                  last;
+               } elsif($rd=~/[\0-\037]/) {     # -- gibberish
+                  last;
+               } else {
+                  $bb = $b;
+                  last;
+               }
+               sleep 0.2;
+            }
+            last if(time()-$st>1);
+         }
+         last if($bb);
+         sleep 0.3;
+      } 
+      print "baudrate: $bb\n" if($conf{verbose});
+      sleep 0.1;
+      if(!$bb) {
+         die "$me: ERROR: no viable baudrate for $conf{device} found, abort.\n";
+      }
+   }
+
    my $st = time();
    
    open(my $fh,"<",$fn);
@@ -388,17 +554,43 @@ sub printGcode {
    my $pos_tot = (stat($fn))[7];
    my $lcur_z;
    my $cur_z = 0;
+   my $tot_e = 0;
+   my $cur_e = 0;
    my $layer = 0;
 
    $SIG{INT} = sub {
-      print "\n\taborting print.\n";
+      print "\n\taborting print, sending 'abort' Gcode ...\n";
+      sleep 1;
       open(my $fh,"<","custom/abort.gcode");
       while(<$fh>) {
+         my $abort;
+         
+         next if(/^\s*;/);
          $com->write($_);
+         
+         # -- complicate way to retrieve feedback
+         my $st = time();
+         my $resp = '';
+         
+         while(1) {
+            my($a,$in,$out,$x) = $com->status();
+            if($in>0) {
+               my($n,$rd) = $com->read($in);
+               $resp .= $rd;
+               last if($resp=~/ok/);
+         
+            } elsif(time()-$st > 20) {
+               $abort++;
+               last;
+            }
+         }
+         sleep 0.5;
+         last if($abort);
       }
       close($fh);
       exit -1;
    };
+   my $status = "init";
    
    while(<$fh>) {
       $pos += length($_);
@@ -412,10 +604,13 @@ sub printGcode {
       # -- rudimentary catch layer changes, if small change then it's a layer change
       $cur_z = $1 if(/G1 Z(\S+)/);
       $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
-
+      $tot_e = $cur_e if(/G92 E0/);
+      $status = "printing", $cur_e = $tot_e + $1 if(/G1.*E([\d\.]+)/);
+      $status = "heating" if(/^M109/);
+      
       # -- status line
-      printf "print %-20s: %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z=%.2fmm, layer #%d%s",
-         $conf{filename} || $fn,int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$conf{verbose}?"\n":"\r"
+      printf "$me: print: %s %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z=%.2fmm, layer #%d, filament %.2fcm%s",
+         $status,int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$cur_e/10,$conf{verbose}?"\n":"\r"
          if(!$conf{quiet});
 
       print "send: '$_'" if($conf{verbose});
@@ -423,21 +618,23 @@ sub printGcode {
       $com->write($_);
 
       my $await_ok = ($_=~/^[GM]/);
-
+      my $resp = '';
+      
       while(1) {
          my($in,$out);
          (undef,$in,$out,undef) = $com->status();
          if($in) {
             print "# in:$in out:$out\n" if($conf{verbose}>1);
             my($n,$rd) = $com->read($in);
-            if($n) {
-               print "recv: '$rd'\n" if($conf{verbose});
-               last if($rd =~ /ok/i);
-               last if($rd =~ /start/i);
+            $resp .= $rd;
+            if($await_ok) {
+               last if($resp =~ /ok/i);
+               last if($resp =~ /start/i);
+               sleep 0.05;
+            } else {
+               last;
             }
-            sleep 0.05;
          } else {
-            last if(!$await_ok);
             sleep 0.05;
          }
       }
