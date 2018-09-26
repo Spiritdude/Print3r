@@ -1,5 +1,8 @@
 NAME=Print3r
 VERSION=0.0.3
+#DEST_BIN=~/bin/
+DEST_BIN=/usr/local/bin
+CMD=print3r
 
 all::
 	@echo "make requirements install deinstall"
@@ -8,13 +11,24 @@ requirements::
 	sudo cpan Time::HiRes Device::SerialPort
 
 install::
-	cp gcodetool ~/bin/
+	sudo cp ${CMD} ${DEST_BIN}/
 
 deinstall::
-	rm -f ~/bin/gcodetool	
+	sudo rm -f ${DEST_BIN}/${CMD}
+
+# -- developer(s) only:
 
 edit::
-	dee4 print3r Makefile
+	dee4 print3r Makefile README.md
 
 backup::
 	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
+
+change::
+	git commit -am "..."
+
+pull::
+	git pull
+
+push::
+	git push
