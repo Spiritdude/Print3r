@@ -5,10 +5,10 @@
 # License: GPLv3
 #
 # Description:
-#  Command line tool to print gcode to 3d printers without GUI
-#  - Slicing with slic3r backend
-#  - Printing via USB
-#  - Printing .scad, .stl and .gcode
+#  Command line tool to print parts to 3d printers without GUI
+#  - slicing with slic3r backend
+#  - printing via USB
+#  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
 # 2018/09/26: 0.0.3: renamed to Print3r
@@ -28,9 +28,13 @@ my($me) = ($0=~/\/([^\/]+)/);
 
 $conf{device} = '/dev/ttyUSB0';
 
+# -- short to long option mapping
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','-d'=>'device');
 
-my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1,'multiply-part'=>1);
+# -- intern option (not to pass on to convertors)
+my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1,'multiply-part'=>1);
+
+my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
 my $printer;
 $printer->{build}->{x} = 210;
@@ -74,7 +78,7 @@ if($conf{printer}) {                # -- printer profile linked, extract useful 
       ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$co[2]);
    }
    foreach my $k (keys %conf) {     # -- transfer command-line args to slicer config
-      next if($intern{$k});
+      next if($internOption{$k});
       my $k_ = $k; $k_ =~ s/-/_/g;
       $c->{$k_} = $conf{$k};
    }
@@ -118,7 +122,7 @@ if($cmd eq 'analyze') {
    header();
    foreach my $fn (@f) {
       $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.gcode/;
-      sliceSTL($fn,\%conf);
+      slicePart($fn,\%conf);
    }
    
 } elsif($cmd eq 'print') {
@@ -133,20 +137,22 @@ if($cmd eq 'analyze') {
          push(@rm,$fn);
       }
 
-      if($fn=~/\.stl$/i) {
+      if($fn=~/\.(\w+)$/ && $sliceExtSupported{$1}) {
          $conf{output} = "/tmp/gcodetool-$$.gcode";
-         #sliceSTL($fn,\%conf);
+         #slicePart($fn,\%conf);
          #$fn = $conf{output};
          #push(@rm,$fn);
          push(@fx,$fn);                # -- we gather all .stl
 
       } elsif($fn=~/\.gcode$/i) {      # -- already .gcode, we print direct
          printGcode($fn,\%conf);
+      } else {
+         print "$me: ERROR: can't print <$fn>, skipped.\n";
       }
    }
    if(@fx) {                           # -- slice all .stl together and print then
       my $fn = $conf{output} = "/tmp/gcodetool-$$.gcode";
-      sliceSTL(\@fx,\%conf); 
+      slicePart(\@fx,\%conf); 
       push(@rm,$fn);
       printGcode($fn,\%conf);
    }
@@ -166,15 +172,16 @@ if($cmd eq 'analyze') {
       slice-only:
          --random-placement
          --multiply-part=<n>  
-         --<key>=<value>      include any valid slic3r option
+         --<key>=<value>      include any valid slic3r option (slic3r --help)
 
    commands:
-      slice <file.stl>        slice stl into gcode
+      slice <file.stl|amf..>  slice file to gcode (.stl, .amf, .obj, .3mf)
       print <file.gcode>      print gcode
          print <file.stl>     slice & print in one go
          print <file.scad>    convert, slice & print in one go
       analyze <file.gcode>
          analyze <file.stl>
+         analyze <file.scad>
       render <file.gcode>     render an image
          render <file.stl>
          render <file.scad>
@@ -194,7 +201,7 @@ if($cmd eq 'analyze') {
 
 sub header {
    if(!$conf{quiet}) {
-      print "== $NAME $VERSION == https://github.com/Spiritdude/Gcodetool\n";
+      print "== $NAME $VERSION == https://github.com/Spiritdude/Print3r\n";
       print "$me: conf: device $conf{device}, bed $printer->{build}->{x}x$printer->{build}->{y}mm";
       print ", nozzle/d $printer->{nozzle_diameter}mm" if($printer->{nozzle_diameter});
       print ", layer/h $printer->{layer_height}mm" if($printer->{layer_height});
@@ -431,12 +438,12 @@ sub renderGcode {
    close $fh;
 }
 
-sub sliceSTL {
+sub slicePart {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
 
-   if(!$fn=~/\.stl$/i) {
-      print "$me: ERROR: you can only slice .stl files but not <$fn>, skipped\n";
+   if($fn=~/\.(\w+)$/ && $sliceExtSupported{$1}) {
+      print "$me: ERROR: you can only slice .stl, .amf, .obj or .3mf files but not <$fn>, skipped\n";
       return;
    }
    my $tmp = "/tmp/gcodetool-$$.gcode";
@@ -451,13 +458,13 @@ sub sliceSTL {
 
 	if(fork()==0) {
       foreach my $k (keys %conf) {
-         next if($intern{$k});
+         next if($internOption{$k});
          push(@a,"--$k",$conf{$k});
       }
       if($conf{'multiply-part'}) {
          push(@a,"--merge");
          foreach(1..$conf{'multiply-part'}) {
-            push(@a,$fn);
+            push(@a,ref($fn)?@$fn:$fn);
          }
       } else {
          if(ref($fn)eq'ARRAY') {
@@ -474,7 +481,7 @@ sub sliceSTL {
       }
       exec(@a);
    }
-   print "$me: slice stl".(ref($fn)?"s":"")." to gcode: ";
+   print "$me: slice part".(ref($fn)?"s":"")." to gcode: ";
    wait();
    if($?) {
       print "ERROR (bad options/arguments?)\n";
