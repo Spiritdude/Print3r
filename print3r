@@ -1,15 +1,17 @@
 #!/usr/bin/perl
 
-# == Gcodetool, written by Rene K. Mueller <spiritdude@gmail.com>
+# == Print3r, written by Rene K. Mueller <spiritdude@gmail.com>
 #
 # License: GPLv3
 #
 # Description:
 #  Command line tool to print gcode to 3d printers without GUI
-#  - Slicing is done with slic3r backend
-#  - Printing is done via USB
+#  - Slicing with slic3r backend
+#  - Printing via USB
+#  - Printing .scad, .stl and .gcode
 #
 # History:
+# 2018/09/26: 0.0.3: renamed to Print3r
 # 2018/09/24: 0.0.2: 'print' of scad, stl and gcode, 'render' of scad, stl and gcode
 # 2018/09/22: 0.0.1: first version, barely functional: slice, print and slice+print works
 
@@ -17,8 +19,8 @@ use strict;
 use Time::HiRes qw(time sleep);
 use Device::SerialPort;
 
-my $NAME = "Gcodetool";
-my $VERSION = '0.0.2';
+my $NAME = "Print3r";
+my $VERSION = '0.0.3';
 my %conf;
 my @f;
 
@@ -28,7 +30,7 @@ $conf{device} = '/dev/ttyUSB0';
 
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','-d'=>'device');
 
-my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1);
+my %intern = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1,'multiply-part'=>1);
 
 my $printer;
 $printer->{build}->{x} = 210;
@@ -38,7 +40,12 @@ $printer->{build}->{z} = 180;
 $conf{baudrate} = 115200;
 
 foreach (@ARGV) {
-   $conf{$s2l{$1}}++, next if(/^-(\w+)$/);
+   if(/^-(\w+)$/) {
+      foreach my $f (split(/|/,$1)) {     # -- '-v' or '-vv' -> "--verbose=2"
+         $conf{$s2l{$f}}++;
+      }
+      next;
+   }
    $conf{$1}++, next if(/^--([\w\-]+)$/);
    $conf{$1} = $2, next if(/^--([\w\-]+)=(.*)$/);
    push(@f,$_);
@@ -60,7 +67,7 @@ if($conf{verbose}) {
 
 $| = 1;
 
-if($conf{printer}) {       # -- printer profile linked
+if($conf{printer}) {                # -- printer profile linked, extract useful information
    my $c = readSlicerConf($conf{printer});
    if($c->{bed_shape}) {
       my(@co) = split(/,/,$c->{bed_shape});
@@ -94,6 +101,7 @@ if($cmd eq 'analyze') {
    foreach my $fn (@f) {
       my $i;
       my @rm;
+      $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.png/;
       if($fn =~ /\.scad$/i) {
          $i = renderScad($fn,\%conf);
       } elsif($fn =~ /\.stl$/i) {
@@ -109,41 +117,57 @@ if($cmd eq 'analyze') {
 } elsif($cmd eq 'slice') {
    header();
    foreach my $fn (@f) {
+      $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.gcode/;
       sliceSTL($fn,\%conf);
    }
    
 } elsif($cmd eq 'print') {
    header();
+   my(@rm);
+   my(@fx);
    foreach my $fn (@f) {
-      my(@rm);
       if($fn=~/\.scad$/i) {
          $conf{output} = "/tmp/gcodetool-$$.stl";
          scadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
       }
+
       if($fn=~/\.stl$/i) {
          $conf{output} = "/tmp/gcodetool-$$.gcode";
-         sliceSTL($fn,\%conf);
-         $conf{filename} = $fn;
-         $fn = $conf{output};
-         push(@rm,$fn);
-      }
-      printGcode($fn,\%conf);
-      unlink @rm if(@rm);
-   }
+         #sliceSTL($fn,\%conf);
+         #$fn = $conf{output};
+         #push(@rm,$fn);
+         push(@fx,$fn);                # -- we gather all .stl
 
+      } elsif($fn=~/\.gcode$/i) {      # -- already .gcode, we print direct
+         printGcode($fn,\%conf);
+      }
+   }
+   if(@fx) {                           # -- slice all .stl together and print then
+      my $fn = $conf{output} = "/tmp/gcodetool-$$.gcode";
+      sliceSTL(\@fx,\%conf); 
+      push(@rm,$fn);
+      printGcode($fn,\%conf);
+   }
+   unlink @rm if(@rm);
+   
 } else {
-   print "$me $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
+   print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
-      --verbose or -v         increase verbosity
+      --verbose or -v or -vv  increase verbosity
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: $conf{baudrate}
-      --device=<d>            define device, default: $conf{device}
+      --device=<d>            set device, default: $conf{device}
       --printer=<config.ini>  slic3r config of printer
       --version               display version and exit
-      
+      --output=<file>         define output file for 'slice' and 'render' command
+      slice-only:
+         --random-placement
+         --multiply-part=<n>  
+         --<key>=<value>      include any valid slic3r option
+
    commands:
       slice <file.stl>        slice stl into gcode
       print <file.gcode>      print gcode
@@ -173,7 +197,7 @@ sub header {
       print "== $NAME $VERSION == https://github.com/Spiritdude/Gcodetool\n";
       print "$me: conf: device $conf{device}, bed $printer->{build}->{x}x$printer->{build}->{y}mm";
       print ", nozzle/d $printer->{nozzle_diameter}mm" if($printer->{nozzle_diameter});
-      print ", layer height $printer->{layer_height}mm" if($printer->{layer_height});
+      print ", layer/h $printer->{layer_height}mm" if($printer->{layer_height});
       print ", filament/d $printer->{filament_diameter}mm" if($printer->{filament_diameter});
       print "\n";
    }
@@ -430,7 +454,19 @@ sub sliceSTL {
          next if($intern{$k});
          push(@a,"--$k",$conf{$k});
       }
-      push(@a,$fn);
+      if($conf{'multiply-part'}) {
+         push(@a,"--merge");
+         foreach(1..$conf{'multiply-part'}) {
+            push(@a,$fn);
+         }
+      } else {
+         if(ref($fn)eq'ARRAY') {
+            push(@a,"--merge");
+            push(@a,@$fn);
+         } else {
+            push(@a,$fn);
+         }
+      }
       print "exec: @a\n" if($conf{verbose});
       unless($conf{verbose}) {
          close STDERR;
@@ -438,7 +474,7 @@ sub sliceSTL {
       }
       exec(@a);
    }
-   print "$me: slice stl to gcode: ";
+   print "$me: slice stl".(ref($fn)?"s":"")." to gcode: ";
    wait();
    if($?) {
       print "ERROR (bad options/arguments?)\n";
@@ -559,7 +595,7 @@ sub printGcode {
    my $layer = 0;
 
    $SIG{INT} = sub {
-      print "\n\taborting print, sending 'abort' Gcode ...\n";
+      print "\n\taborting print ...\n";
       sleep 1;
       open(my $fh,"<","custom/abort.gcode");
       while(<$fh>) {

@@ -1,3 +1,6 @@
+NAME=Print3r
+VERSION=0.0.3
+
 all::
 	@echo "make requirements install deinstall"
 
@@ -11,4 +14,7 @@ deinstall::
 	rm -f ~/bin/gcodetool	
 
 edit::
-	dee4 gcodetool Makefile
+	dee4 print3r Makefile
+
+backup::
+	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
