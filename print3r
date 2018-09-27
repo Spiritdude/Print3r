@@ -11,7 +11,8 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2018/09/26: 0.0.3: renamed to Print3r
+# 2018/09/27: 0.0.4: code cleanup
+# 2018/09/26: 0.0.3: renamed to Print3r, 'gcode' command added to send single lines
 # 2018/09/24: 0.0.2: 'print' of scad, stl and gcode, 'render' of scad, stl and gcode
 # 2018/09/22: 0.0.1: first version, barely functional: slice, print and slice+print works
 
@@ -20,7 +21,7 @@ use Time::HiRes qw(time sleep);
 use Device::SerialPort;
 
 my $NAME = "Print3r";
-my $VERSION = '0.0.3';
+my $VERSION = '0.0.4';
 my %conf;
 my @f;
 
@@ -32,7 +33,7 @@ $conf{device} = '/dev/ttyUSB0';
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','-d'=>'device');
 
 # -- intern option (not to pass on to convertors)
-my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1,'multiply-part'=>1);
+my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'random-placement'=>1,'multiply-part'=>1,'scale-part'=>1,'rotate-part'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
@@ -129,20 +130,21 @@ if($cmd eq 'analyze') {
    header();
    my(@rm);
    my(@fx);
+
    foreach my $fn (@f) {
       if($fn=~/\.scad$/i) {
-         $conf{output} = "/tmp/gcodetool-$$.stl";
+         $conf{output} = "/tmp/print3r-$$.stl";
          scadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
       }
 
       if($fn=~/\.(\w+)$/ && $sliceExtSupported{$1}) {
-         $conf{output} = "/tmp/gcodetool-$$.gcode";
+         $conf{output} = "/tmp/print3r-$$.gcode";
          #slicePart($fn,\%conf);
          #$fn = $conf{output};
          #push(@rm,$fn);
-         push(@fx,$fn);                # -- we gather all .stl
+         push(@fx,$fn);                # -- we gather all parts (.stl,.amf,.obj, etc)
 
       } elsif($fn=~/\.gcode$/i) {      # -- already .gcode, we print direct
          printGcode($fn,\%conf);
@@ -150,13 +152,25 @@ if($cmd eq 'analyze') {
          print "$me: ERROR: can't print <$fn>, skipped.\n";
       }
    }
-   if(@fx) {                           # -- slice all .stl together and print then
-      my $fn = $conf{output} = "/tmp/gcodetool-$$.gcode";
+   if(@fx) {                           # -- slice all parts together and print then
+      my $fn = $conf{output} = "/tmp/print3r-$$.gcode";
       slicePart(\@fx,\%conf); 
       push(@rm,$fn);
       printGcode($fn,\%conf);
    }
    unlink @rm if(@rm);
+   
+} elsif($cmd eq 'gcode') {
+   my $tmp = "/tmp/print3r-$$.gcode";
+   open(my $fh,">",$tmp);
+   print $fh "G4 S1\n";    # -- wait 1 sec, required for Marlin otherwise following commands go nowhere
+   print $fh join("\n",@f)."\n";
+   print $fh "G4 S1\n";    # -- wait 1 sec at the end
+   print join("\n",@f)."\n" if($conf{verbose});
+   close $fh;
+   
+   printGcode($tmp,\%conf);
+   unlink $tmp;
    
 } else {
    print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
@@ -175,6 +189,7 @@ if($cmd eq 'analyze') {
          --<key>=<value>      include any valid slic3r option (slic3r --help)
 
    commands:
+      gcode <gcode-line> [...]
       slice <file.stl|amf..>  slice file to gcode (.stl, .amf, .obj, .3mf)
       print <file.gcode>      print gcode
          print <file.stl>     slice & print in one go
@@ -217,13 +232,14 @@ sub scadToSTL {
    if(fork()==0) {
       $conf{output} = "sample.stl" unless($conf{output});
       unlink $conf{output};
+      my(@a) = ('openscad','-o',$conf{output},$fn);
       unless($conf{verbose}) {
          close STDOUT;
          close STDERR;
       }
-      exec('openscad','-o',$conf{output},$fn);
+      exec(@a);
    }
-   print "$me: convert scad to stl: ";
+   print "$me: scad to stl: ";
    wait();
    if($?) {
       print "ERROR (bad options/arguments?)\n";
@@ -266,7 +282,7 @@ sub renderSTL {
       print "$me: ERROR: you can only render .stl files but not <$fn>, skipped\n";
       return;
    }
-   my $tmp = "./gcodetool-$$.stl";
+   my $tmp = "./print3r-$$.stl";
    if(fork()==0) {
       $conf{output} = "sample.png" unless($conf{output});
       if(open(my $fh,">",$tmp)) {
@@ -446,7 +462,7 @@ sub slicePart {
       print "$me: ERROR: you can only slice .stl, .amf, .obj or .3mf files but not <$fn>, skipped\n";
       return;
    }
-   my $tmp = "/tmp/gcodetool-$$.gcode";
+   my $tmp = "/tmp/print3r-$$.gcode";
    my $rm;
    
    my @a = ('slic3r');
@@ -610,25 +626,9 @@ sub printGcode {
          
          next if(/^\s*;/);
          $com->write($_);
-         
-         # -- complicate way to retrieve feedback
-         my $st = time();
-         my $resp = '';
-         
-         while(1) {
-            my($a,$in,$out,$x) = $com->status();
-            if($in>0) {
-               my($n,$rd) = $com->read($in);
-               $resp .= $rd;
-               last if($resp=~/ok/);
-         
-            } elsif(time()-$st > 20) {
-               $abort++;
-               last;
-            }
-         }
-         sleep 0.5;
-         last if($abort);
+
+         my($resp) = printerResponse($com,$_,{timeout=>20});
+         last if($resp eq 'abort');
       }
       close($fh);
       exit -1;
@@ -638,52 +638,78 @@ sub printGcode {
    while(<$fh>) {
       $pos += length($_);
      
-      next if(/^;/ || /^\s*$/);
-
       my $eta = (time()-$st) / $pos * $pos_tot;     # -- total time
       $eta = (($st + $eta) - time()) / 60;          # -- relative
       my $now = (time()-$st)/60;
 
       # -- rudimentary catch layer changes, if small change then it's a layer change
-      $cur_z = $1 if(/G1 Z(\S+)/);
+      $cur_z = $1 if(/^G1 Z(\S+)/);
       $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
-      $tot_e = $cur_e if(/G92 E0/);
+      $tot_e = $cur_e if(/^G92 E0/);
       $status = "printing", $cur_e = $tot_e + $1 if(/G1.*E([\d\.]+)/);
       $status = "heating" if(/^M109/);
       
       # -- status line
-      printf "$me: print: %s %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z=%.2fmm, layer #%d, filament %.2fcm%s",
-         $status,int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$cur_e/10,$conf{verbose}?"\n":"\r"
-         if(!$conf{quiet});
+      if(!$conf{quiet}) {
+         if($status ne 'printing') {
+            printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
+         } else {
+            printf "$me: print: %dh %02dm elapsed, eta %dh %02dm, %d%% complete ($pos of $pos_tot), z=%.2fmm, layer #%d, filament %.2fcm%s",
+               int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$cur_e/10,$conf{verbose}?"\n":"\r"
+         }
+      }
+      next if(/^;/ || /^\s*$/);
 
       print "send: '$_'" if($conf{verbose});
 
       $com->write($_);
-
-      my $await_ok = ($_=~/^[GM]/);
-      my $resp = '';
-      
-      while(1) {
-         my($in,$out);
-         (undef,$in,$out,undef) = $com->status();
-         if($in) {
-            print "# in:$in out:$out\n" if($conf{verbose}>1);
-            my($n,$rd) = $com->read($in);
-            $resp .= $rd;
-            if($await_ok) {
-               last if($resp =~ /ok/i);
-               last if($resp =~ /start/i);
-               sleep 0.05;
-            } else {
-               last;
-            }
-         } else {
-            sleep 0.05;
-         }
-      }
+      my($resp) = printerResponse($com,$_,{callback=>sub {
+         my($mesg,$com,$cmd) = @_;
+         my $now = (time()-$st)/60;
+         # ... e.g. parse while heating up the temperature(s)
+         # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
+         printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
+      }});
    }
    close $fh;
    print "\n" if(!$conf{quiet});
+}
+
+sub printerResponse {
+   my($com,$cmd,$arg) = @_;
+   my $await_ok = ($cmd=~/^[GM]/);
+   my $resp = '';
+   my $st = time();
+   
+   while(1) {
+      my($in,$out);
+      (undef,$in,$out,undef) = $com->status();
+
+      if($in) {
+         print "# in:$in out:$out\n" if($conf{verbose}>1);
+         my($n,$rd) = $com->read($in);
+         $resp .= $rd;
+
+         &{$arg->{callback}}($rd,$com,$cmd) if(defined $arg->{callback} && ref($arg->{callback})eq'CODE');
+
+         if($await_ok) {
+            print "> '$resp'\n" if($conf{verbose}>2);
+            last if($resp =~ /ok/i);
+            last if($resp =~ /start/i);
+            sleep 0.05;
+         } else {
+            last;
+         }
+
+      } elsif($arg->{timeout} && time()-$st > $arg->{timeout}) {
+         return 'abort';
+         
+      } else {
+         sleep 0.05;
+      }
+   }
+   
+   return $resp;
 }
 
 sub readSlicerConf {
