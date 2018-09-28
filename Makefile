@@ -9,6 +9,7 @@ all::
 
 requirements::
 	sudo cpan Time::HiRes Device::SerialPort
+	sudo apt install libgd-perl
 
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
@@ -16,6 +17,7 @@ install::
 deinstall::
 	sudo rm -f ${DEST_BIN}/${CMD}
 
+# ---------------------------------------------------------------------------------------------------------------
 # -- developer(s) only:
 
 edit::

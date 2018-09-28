@@ -11,7 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2018/09/27: 0.0.4: code cleanup
+# 2018/09/27: 0.0.4: code cleanup, 'gconsole' added
 # 2018/09/26: 0.0.3: renamed to Print3r, 'gcode' command added to send single lines
 # 2018/09/24: 0.0.2: 'print' of scad, stl and gcode, 'render' of scad, stl and gcode
 # 2018/09/22: 0.0.1: first version, barely functional: slice, print and slice+print works
@@ -23,6 +23,7 @@ use Device::SerialPort;
 my $NAME = "Print3r";
 my $VERSION = '0.0.4';
 my %conf;
+my $process;
 my @f;
 
 my($me) = ($0=~/\/([^\/]+)/);
@@ -101,12 +102,14 @@ if($cmd eq 'analyze') {
       print toJSON($i) if($i);
    }
 
-} elsif($cmd eq 'render') {
+} elsif($cmd eq 'renderx') {     # -- no longer used
    header();
    foreach my $fn (@f) {
       my $i;
       my @rm;
-      $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.png/;
+      if(!defined $conf{output}) {
+         $conf{output} = $fn, $conf{output} =~ s/\.[^\/\.]$/.png/;
+      }
       if($fn =~ /\.scad$/i) {
          $i = renderScad($fn,\%conf);
       } elsif($fn =~ /\.stl$/i) {
@@ -126,11 +129,12 @@ if($cmd eq 'analyze') {
       slicePart($fn,\%conf);
    }
    
-} elsif($cmd eq 'print') {
+} elsif($cmd eq 'print' || $cmd eq 'render') {
    header();
    my(@rm);
    my(@fx);
-
+   my $o = $conf{output};     # -- preserve original setting
+   
    foreach my $fn (@f) {
       if($fn=~/\.scad$/i) {
          $conf{output} = "/tmp/print3r-$$.stl";
@@ -147,7 +151,12 @@ if($cmd eq 'analyze') {
          push(@fx,$fn);                # -- we gather all parts (.stl,.amf,.obj, etc)
 
       } elsif($fn=~/\.gcode$/i) {      # -- already .gcode, we print direct
-         printGcode($fn,\%conf);
+         if($cmd eq 'render') {
+            $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.png/;
+            renderGcode($fn,\%conf);
+         } else {
+            printGcode($fn,\%conf);
+         }
       } else {
          print "$me: ERROR: can't print <$fn>, skipped.\n";
       }
@@ -156,7 +165,16 @@ if($cmd eq 'analyze') {
       my $fn = $conf{output} = "/tmp/print3r-$$.gcode";
       slicePart(\@fx,\%conf); 
       push(@rm,$fn);
-      printGcode($fn,\%conf);
+      if($cmd eq 'render') {
+         if($o) {
+            $conf{output} = $o;
+         } else {
+            $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.png/;
+         }
+         renderGcode($fn,\%conf);
+      } else {
+         printGcode($fn,\%conf);
+      }
    }
    unlink @rm if(@rm);
    
@@ -164,7 +182,10 @@ if($cmd eq 'analyze') {
    my $tmp = "/tmp/print3r-$$.gcode";
    open(my $fh,">",$tmp);
    print $fh "G4 S1\n";    # -- wait 1 sec, required for Marlin otherwise following commands go nowhere
-   print $fh join("\n",@f)."\n";
+   foreach (@f) {
+      s/\\n/\n/g;
+      print $fh $_."\n";
+   }
    print $fh "G4 S1\n";    # -- wait 1 sec at the end
    print join("\n",@f)."\n" if($conf{verbose});
    close $fh;
@@ -172,6 +193,26 @@ if($cmd eq 'analyze') {
    printGcode($tmp,\%conf);
    unlink $tmp;
    
+} elsif($cmd eq 'gconsole') {
+   $| = 1;
+   print "conf: device $conf{device}, ";
+   my $com = Device::SerialPort->new($conf{device}, 1);
+   
+   die "$me: ERROR: can't open $conf{device}" if(!$com);
+   
+   $com->baudrate($conf{baudrate}*1) if($conf{baudrate});
+   print "connected\n";
+   while(1) {
+      print "> ";
+      $_ = readline(STDIN);
+      s/^\*s//;
+      s/\*s$//;
+      exit if($_ eq 'quit' || $_ eq 'exit');
+      $com->write($_);
+      my($resp) = printerResponse($com,$_);
+      print "-----\n$resp.\n";
+   }
+      
 } else {
    print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
 
@@ -200,6 +241,8 @@ if($cmd eq 'analyze') {
       render <file.gcode>     render an image
          render <file.stl>
          render <file.scad>
+      gcode <code1> [...]     send gcode lines
+      gconsole                start gcode console
       help
    
    examples:
@@ -208,7 +251,10 @@ if($cmd eq 'analyze') {
       $me --device=/dev/ttyUSB1 print test.gcode
       $me --device=/dev/ttyUSB1 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
       $me --printer=my_printer.ini print cube.scad
-
+      $me --printer=my_printer.ini gcode 'G1 X Y' 'G1 X60' 'G1 Z'
+      $me --printer=my_printer.ini gconsole
+      > M105
+      ...
 ";
 }   
 
@@ -323,11 +369,11 @@ sub _3dto2d {
    my $loc;
    
    $view->{x} = $printer->{build}->{x} / 2;
-   $view->{y} = -$printer->{build}->{y} * 0.8;
+   $view->{y} = -$printer->{build}->{y} * 1.2;
    $view->{z} = $printer->{build}->{z} * 0.8;
    
-   $loc->{x} = 0; #$printer->{build}->{x} / 2;
-   $loc->{y} = 0; #$printer->{build}->{y} / 2;
+   $loc->{x} = 0;
+   $loc->{y} = 0;
    $loc->{z} = 0;
    
    if($pe eq 'side') {
@@ -341,6 +387,7 @@ sub _3dto2d {
          my $x_ = $p->{x} - $view->{x} - $loc->{x};
          my $y_ = $p->{z} - $view->{z} - $loc->{y};
          my $z_ = $p->{y} - $view->{y} - $loc->{z};
+         $z_ = $z_/2;
          $x = (+($x_ / $z_)) * $im->{width}/2 + $im->{width}/2;
          $y = (-($y_ / $z_)) * $im->{height}/2 + $im->{height}/2;
       } else {
@@ -354,7 +401,10 @@ sub _3dto2d {
 sub renderGcode {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
+
    use GD;
+
+   print "$me: render: ";
    my($w,$h) = (512+256,512);
    my $im = new GD::Image($w,$h);
    my $col;
@@ -362,7 +412,9 @@ sub renderGcode {
    $col->{bg} = $im->colorAllocate(255,255,255);
    $col->{extrusion} = $im->colorAllocate(128,200,128);
    $col->{box} = $im->colorAllocate(128,128,128);
-   $col->{bed} = $im->colorAllocate(210,210,210);
+   $col->{bed} = $im->colorAllocate(200,200,200);
+   $col->{bed_raster} = $im->colorAllocate(210,210,210);
+   $col->{bed_raster2} = $im->colorAllocate(220,220,220);
    
    foreach my $r (0..200) {
       my $n = $im->colorAllocate($r*0.5,20+$r,$r*0.5);
@@ -391,19 +443,42 @@ sub renderGcode {
    $im->string(gdSmallFont,512+5,256+5,"side",$col->{box});
 
    $im->clip(0,0,512,512);
-   $im->line(
-      _3dto2d({x=>0,y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),
-      _3dto2d({x=>$printer->{build}->{x},y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
-   $im->line(
-      _3dto2d({x=>$printer->{build}->{x},y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),
-      _3dto2d({x=>$printer->{build}->{x},y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
-   $im->line(
-      _3dto2d({x=>$printer->{build}->{x},y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),
-      _3dto2d({x=>0,y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
-   $im->line(
-      _3dto2d({x=>0,y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}),
-      _3dto2d({x=>0,y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}),$col->{bed});
 
+   my $p = new GD::Polygon;   # -- render bed with raster
+   $p->addPt(
+      _3dto2d({x=>0,y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $p->addPt(
+      _3dto2d({x=>$printer->{build}->{x},y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $p->addPt(
+      _3dto2d({x=>$printer->{build}->{x},y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $p->addPt(
+      _3dto2d({x=>0,y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $im->filledPolygon($p,$col->{bed});
+
+   for(my $i=0; $i<$printer->{build}->{x}; $i += 10) {
+      my $n = 1;
+      my $c = 'bed_raster';
+      $n = 2, $c = 'bed_raster2' if($i%100==0);
+      for(my $j=0; $j<$n; $j++) {
+         $im->line(
+            _3dto2d({x=>$i,y=>0,z=>0},'perspective',{xoff=>$j,width=>$w0,height=>$h0}),
+            _3dto2d({x=>$i,y=>$printer->{build}->{y},z=>0},'perspective',{xoff=>$j,width=>$w0,height=>$h0}),
+            $col->{$c}
+         );
+      }
+   }                        
+   for(my $i=0; $i<$printer->{build}->{y}; $i += 10) {
+      my $n = 1;
+      my $c = 'bed_raster';
+      $n = 2, $c = 'bed_raster2' if($i%100==0);
+      for(my $j=0; $j<$n; $j++) {
+         $im->line(
+            _3dto2d({x=>0,y=>$i,z=>0},'perspective',{yoff=>$j,width=>$w0,height=>$h0}),
+            _3dto2d({x=>$printer->{build}->{x},y=>$i,z=>0},'perspective',{yoff=>$j,width=>$w0,height=>$h0}),
+            $col->{$c}
+         );
+      }
+   }                        
    $im->clip(0,0,512+256,512);
    
    if(!$fn=~/\.gcode$/i) {
@@ -434,7 +509,8 @@ sub renderGcode {
          if($px->{e}) {                   # -- move or extrude
             #_printTo($p);
             #$im->line($lx,$ly,$x,$y,$col->{extrusion});
-            $im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$p->{z}/$printer->{build}->{z}*200+$col->{depth});
+            #$im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$p->{z}/$printer->{build}->{z}*200+$col->{depth});
+            $im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$col->{extrusion});
             $im->line(_3dto2d($lp,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),_3dto2d($p,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),$col->{extrusion});
             $im->line(_3dto2d($lp,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),_3dto2d($p,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),$col->{extrusion});
          } else {
@@ -446,12 +522,20 @@ sub renderGcode {
       }
    }
    close $fh;
+   my $l = 0;
+   my $lh = 15;
+   $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.fx%.fmm",'bed',$printer->{build}->{x},$printer->{build}->{y}),$col->{box}); $l += $lh;
+   $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fmm",'nozzle/d',$printer->{nozzle_diameter}),$col->{box}); $l += $lh;
+   $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fmm",'layer/h',$printer->{layer_height}),$col->{box}); $l += $lh;
+   $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fmm",'filament/d',$printer->{filament_diameter}),$col->{box}); $l += $lh;
+   $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fcm",'filament used',$process->{filament_used}/10),$col->{box}); $l += $lh;
    
    $conf{output} = "sample.png" unless($conf{output});
    open(my $fh,">",$conf{output});
    binmode($fh);
    print $fh $im->png();
    close $fh;
+   print "done.\n";
 }
 
 sub slicePart {
@@ -497,7 +581,7 @@ sub slicePart {
       }
       exec(@a);
    }
-   print "$me: slice part".(ref($fn)?"s":"")." to gcode: ";
+   print "$me: slice part".(ref($fn) && @$fn>1?"s":"")." to gcode: ";
    wait();
    if($?) {
       print "ERROR (bad options/arguments?)\n";
@@ -509,7 +593,7 @@ sub slicePart {
          $fu = $1, last if(/filament used = ([\d\.]+)/);
       }
       close $fh;
-      printf "filament usage %.2fcm, ",$fu/10 if($fu);
+      $process->{filament_used} = $fu, printf "filament usage %.2fcm, ",$fu/10 if($fu);
       print "done.\n";
    }
    unlink $rm if($rm);
@@ -558,7 +642,7 @@ sub printGcode {
       $com->baudrate($conf{baudrate}*1);
 
    } else {
-      # -- probe baudrate
+      # -- probe baudrate (not yet used, mostly untested)
       my $bb;
       print "$me: print: configure serial\r" if(!$conf{quiet});
       foreach my $b (reverse(2400, 9600, 19200, 38400, 57600, 115200, 250000, 500000, 1000000)) {
@@ -575,26 +659,24 @@ sub printGcode {
 
          sleep 0.2;
 
-         while(1) {
-            my($a,$in,$out,$x) = $com->status();
-            if($in>0) {
-               my($n,$rd) = $com->read($in);
-               $rd =~ s/[\t\r\n]//g;
-               print "> $rd\n" if($conf{verbose}>2);
-               if($rd=~/echo/) {
-                  $bb = $b;
-                  last;
-               } elsif($rd=~/[\0-\037]/) {     # -- gibberish
-                  last;
-               } else {
-                  $bb = $b;
-                  last;
-               }
-               sleep 0.2;
-            }
-            last if(time()-$st>1);
+         my($rd) = printerResponse($com,"M115\n",{timeout => 1, callback => sub {
+            my($rd,$com,$cmd) = @_;
+            $rd =~ s/[\t\r\n]//g;
+            print "> $rd\n" if($conf{verbose}>2);
+         }});
+
+         if($rd=~/echo/) {
+            $bb = $b;
+            last;
+         } elsif($rd=~/[\0-\037]/) {     # -- gibberish
+            last;
+         } else {
+            $bb = $b;
+            last;
          }
+
          last if($bb);
+
          sleep 0.3;
       } 
       print "baudrate: $bb\n" if($conf{verbose});
@@ -658,20 +740,35 @@ sub printGcode {
                int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$cur_e/10,$conf{verbose}?"\n":"\r"
          }
       }
+   
       next if(/^;/ || /^\s*$/);
 
       print "send: '$_'" if($conf{verbose});
 
       $com->write($_);
+
       my($resp) = printerResponse($com,$_,{callback=>sub {
          my($mesg,$com,$cmd) = @_;
          my $now = (time()-$st)/60;
-         # ... e.g. parse while heating up the temperature(s)
-         # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
-         printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
+         if($status ne 'printing') {
+            # ... e.g. parse while heating up the temperature(s)
+            # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
+            if($status eq 'heating' && $mesg=~/(T:[\d\.]+ \/[\d\.]+) (B:[\d\.]+ \/[\d\.]+)/) {
+               printf "$me: print: %s (%s, %s): %dh %02dm elapsed\r",$status,$1,$2,int($now/60),$now%60;
+            } else {
+               printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
+            }
+         }
       }});
+   
+      $com->write(sprintf("M117 %d%% eta %dm l#%d\n",100*$pos/$pos_tot,$eta,$layer));
+      printerResponse($com);
    }
    close $fh;
+   
+   $com->write("M117 completed\n");
+   printerResponse($com);
+   
    print "\n" if(!$conf{quiet});
 }
 
