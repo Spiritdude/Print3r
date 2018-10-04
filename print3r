@@ -652,7 +652,7 @@ sub slicePart {
             }
          } else {
             if(ref($fn)eq'ARRAY') {
-               push(@a,"--merge");
+               push(@a,"--merge") if(@$fn>1);
                push(@a,@$fn);
             } else {
                push(@a,$fn);
