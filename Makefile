@@ -21,10 +21,10 @@ deinstall::
 # -- developer(s) only:
 
 edit::
-	dee4 print3r Makefile README.md
+	dee4 print3r Makefile README.md LICENSE
 
 backup::
-	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
+	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz "--exclude=*/Cura/*" "--exclude=*/CuraEngine/*" "--exclude=*/Slic3r/*" ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
 
 change::
 	git commit -am "..."

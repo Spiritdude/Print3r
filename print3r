@@ -243,11 +243,12 @@ if($cmd eq 'analyze') {
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
-         --random-placement
-         --multiply-part=<n>  
-         --scale=<x>,<y>,<z>
-         --rotate=<x>,<y>,<z>
-         --translate=<x>,<y>,<z>
+         --random-placement   place print randomly on the bed
+         --multiply-part=<n>  multiply part(s)
+         --scale=<x>,<y>,<z>     scale part x,y,z
+         --scale=<f>             scale part f,f,f
+         --rotate=<x>,<y>,<z>    rotate x,y,z
+         --translate=<x>,<y>,<z> translate x,y,z
          --<key>=<value>      include any valid slic3r option (slic3r --help)
 
    commands:
@@ -259,7 +260,7 @@ if($cmd eq 'analyze') {
       analyze <file.gcode>
          analyze <file.stl>
          analyze <file.scad>
-      render <file.gcode>     render an image
+      render <file.gcode>     render an image (use '--output=sample.png' or so)
          render <file.stl>
          render <file.scad>
       gcode <code1> [...]     send gcode lines
@@ -623,9 +624,9 @@ sub slicePart {
          foreach my $f (ref($fn)?@$fn:$fn) {
             my $p = stlRead($f);
             $p = stlRecenter($p);
-            $p = stlScale($p,[split(/,/,$conf{'scale-part'})]) if(defined $conf{scale});
-            $p = stlRotate($p,[split(/,/,$conf{'rotate-part'})]) if(defined $conf{rotate});
-            $p = stlTranslate($p,[split(/,/,$conf{'translate-part'})]) if(defined $conf{translate});
+            $p = stlScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
+            $p = stlRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
+            $p = stlTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
             my $tmp = "/tmp/print3r-$$-$n.stl";
             stlWrite($tmp,$p);
             $n++;
@@ -722,36 +723,6 @@ sub slicePart {
       print "done.\n";
    }
    unlink @rm if(@rm);
-}
-
-sub readGcode {
-   my($fn) = shift;
-   my(%conf) = %{@_[0]};
-   my $i = {};
-
-   open(my $fh,"<",$fn);
-   return if(!$fh);
-   $i->{filename} = $fn;
-
-   while(<$fh>) {
-   }
-   close $fh;
-   return $i;
-}
-
-sub readSTL {
-   my($fn) = shift;
-   my(%conf) = %{@_[0]};
-   my $i = {};
-
-   open(my $fh,"<",$fn);
-   return if(!$fh);
-   $i->{filename} = $fn;
-
-   while(<$fh>) {
-   }
-   close $fh;
-   return $i;
 }
 
 sub printGcode {
@@ -888,7 +859,9 @@ sub printGcode {
       }});
    
       if(time()-$lst>1) {
-         $com->write(sprintf("M117 %d%% eta %dm l#%d\n",100*$pos/$pos_tot,$eta,$layer));
+         $com->write(sprintf("M117 %d%% eta %s l#%d\n",100*$pos/$pos_tot,
+            $eta > 36*60 ? int($eta/60/24)."dy" : $eta > 3*60 ? int($eta/60)."h" : $eta."m",
+            $layer));
          printerResponse($com);
          $lst = time();
       }
@@ -958,20 +931,39 @@ sub stlRead {
    print "stl read <$fn>\n" if($conf{verbose});
    if(open(my $fh,"<",$fn)) {
       my $buff;
-      read($fh,$buff,12);
+      read($fh,$buff,256);
       seek($fh,0,0);
-      if($buff=~/solid/) {       # -- ascii
+      if($buff=~/facet/) {       # -- ascii
          my $v;
-         my $tn = 0;
-         my $fc = 0;
+         my $n = 0;
          while(<$fh>) {
             chop;
-            @{$v->[$tn++]} = split(/ /,$1) if(/vertex (\S.+)/);
-            push(@{$p->{facets}},$v), $v = [], $tn = 0, $fc++ if(/endloop/);
+            push(@$v,[split(/ /,$1)]) if(/vertex (\S.+)/);
+            push(@{$p->{facets}},$v), $v = [], $n++ if(/endloop/);
          }
-         print "$fn: $fc facets\n" if($conf{verbose});
+         print "$fn: $n facets\n" if($conf{verbose});
       } else {                   # -- binary
-         print "$NAME: ERROR: stl binary not yet supported\n";
+         my $n;
+         read($fh,$buff,80);
+         read($fh,$n,4);
+         $n = unpack('i',$n);
+         print "$fn: $n facets\n" if($conf{verbose});
+         my $fu = 'f f f';
+         for(my $i=0; $i<$n; $i++) {
+            my($nr,$v1,$v2,$v3,$at);
+            read($fh,$nr,4*3);
+            read($fh,$v1,4*3);
+            read($fh,$v2,4*3);
+            read($fh,$v3,4*3);
+            read($fh,$at,2);
+            $at = unpack('s',$at);
+            my $v;
+            push(@$v,[unpack($fu,$v1)]);
+            push(@$v,[unpack($fu,$v2)]);
+            push(@$v,[unpack($fu,$v3)]);
+            #print " @{@v[0]} @{@v[1]} @{@v[2]}\n";
+            push(@{$p->{facets}},$v);
+         }
       }
       close $fh;
       return $p;
@@ -1050,6 +1042,7 @@ sub stlRecenter {
 
 sub stlScale {
    my($p,$s) = @_;
+   $s = [@$s[0],@$s[0],@$s[0]] if(ref($s)ne'ARRAY' || @$s!=3);
    print "scale: @$s, " if($conf{verbose});
    return stlTransform($p,sub { 
       my(@p) = @_;
