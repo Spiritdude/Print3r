@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.0.4
+VERSION=0.0.6
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/local/bin
 CMD=print3r
