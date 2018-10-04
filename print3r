@@ -312,7 +312,7 @@ sub scadToSTL {
    print "$me: scad to stl: ";
    wait();
    if($?) {
-      print "ERROR (bad options/arguments?)\n";
+      print "openscad: ERROR (bad options/arguments?)\n";
    } else {
       print "done.\n";
    }
@@ -339,7 +339,7 @@ sub renderScad {
    print "render png: ";
    wait();
    if($?) {
-      print "ERROR (bad options/arguments?)\n";
+      print "openscad: ERROR (bad options/arguments?)\n";
    } else {
       print "done.\n";
    }
@@ -371,7 +371,7 @@ sub renderSTL {
    wait();
    unlink $tmp;
    if($?) {
-      print "ERROR (bad options/arguments?)\n";
+      print "openscad: ERROR (bad options/arguments?)\n";
    } else {
       print "done.\n";
    }
@@ -708,7 +708,7 @@ sub slicePart {
    
    wait();
    if($?) {
-      print "ERROR (bad options/arguments?)\n";
+      print "$a[0]: ERROR (bad options/arguments?)\n";
    } else {
       if($conf{slicer}eq'slic3r') {
          open(my $fh,$conf{output});   # -- try to retrieve filament usage near end of .gcode file
