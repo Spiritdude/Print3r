@@ -30,7 +30,7 @@ my %conf;
 my $process;
 my @f;
 
-my($me) = ($0=~/\/([^\/]+)/);
+my($me) = ($0=~/\/([^\/]+)$/);
 
 $conf{device} = '/dev/ttyUSB0';
 $conf{slicer} = 'slic3r';
