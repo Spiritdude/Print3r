@@ -19,9 +19,12 @@ print3r --printer=prusa-i3.ini print cube.scad
 Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and such.
 
 ## Requirements
-- install `openscad` 
-- install `slic3r`
-- run `make requirements` to install required Perl modules
+- install `openscad`, see [http://www.openscad.org/|Openscad.org]
+- install `slic3r`, Debian/Ubuntu: `apt install slic3r`
+- run `make requirements` to install required Perl modules + Perl GD
+
+## License
+The software is licenses under GPLv3 
 
 ## Install
 
@@ -31,7 +34,7 @@ make install
 
 ### Printer Configurations
 In order to use slicing and printing command `print3r` requires Slic3r printer configuration:
-- run `slic3r` GUI and configure your printer(s)
+- run `slic3r` GUI and configure your printer(s) using the wizard
 - export the configuration (e.g. `my_printer.ini`)
 - reference it with `--printer=my_printer.ini` when you use `print3r`
 
@@ -54,6 +57,7 @@ Print3r (print3r) 0.0.6 USAGE: [<options>] <cmd> <file1> [<...>]
          --scale=<f>             scale part f,f,f
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
+         --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
          --<key>=<value>      include any valid slic3r option (slic3r --help)
 
    commands:
@@ -62,9 +66,6 @@ Print3r (print3r) 0.0.6 USAGE: [<options>] <cmd> <file1> [<...>]
       print <file.gcode>      print gcode
          print <file.stl>     slice & print in one go
          print <file.scad>    convert, slice & print in one go
-      analyze <file.gcode>
-         analyze <file.stl>
-         analyze <file.scad>
       render <file.gcode>     render an image (use '--output=sample.png' or so)
          render <file.stl>
          render <file.scad>

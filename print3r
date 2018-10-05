@@ -11,7 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2018/10/04: 0.0.6: 'scale', 'rotate' and 'translate' implemented
+# 2018/10/04: 0.0.6: 'scale', 'rotate', 'translate' and 'mirror' implemented
 # 2018/09/30: 0.0.5: slicing .scad, preparing other slicers (like CuraEngine)
 # 2018/09/27: 0.0.4: code cleanup, 'gconsole' added
 # 2018/09/26: 0.0.3: renamed to Print3r, 'gcode' command added to send single lines
@@ -39,7 +39,8 @@ $conf{slicer} = 'slic3r';
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device');
 
 # -- intern option (not to pass on to convertors)
-my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,'random-placement'=>1,'multiply-part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'scad-prepend'=>1);
+my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
+   'random-placement'=>1,'multiply-part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,'scad-prepend'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
@@ -94,7 +95,7 @@ if($conf{printer}) {                # -- printer profile linked, extract useful 
    }
 }
 
-if($cmd eq 'analyze') {
+if($cmd eq 'analyze') {          # -- not yet
    foreach my $fn (@f) {
       my $i;
       if($fn =~ /\.stl$/i) {
@@ -107,26 +108,6 @@ if($cmd eq 'analyze') {
       print toJSON($i) if($i);
    }
 
-} elsif($cmd eq 'renderx') {     # -- no longer used
-   header();
-   foreach my $fn (@f) {
-      my $i;
-      my @rm;
-      if(!defined $conf{output}) {
-         $conf{output} = $fn, $conf{output} =~ s/\.[^\/\.]$/.png/;
-      }
-      if($fn =~ /\.scad$/i) {
-         $i = renderScad($fn,\%conf);
-      } elsif($fn =~ /\.stl$/i) {
-         $i = renderSTL($fn,\%conf);
-      } elsif($fn =~ /\.gcode$/i) {
-         $i = renderGcode($fn,\%conf);
-      } else {
-         print "$me: ERROR: file-format not supported: <$fn>, only .stl, .gcode\n";
-      }
-      unlink @rm if(@rm);
-   }
-   
 } elsif($cmd eq 'slice') {
    header();
    my(@rm);
@@ -250,6 +231,7 @@ if($cmd eq 'analyze') {
          --scale=<f>             scale part f,f,f
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
+         --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
          --<key>=<value>      include any valid slic3r option (slic3r --help)
 
    commands:
@@ -258,9 +240,6 @@ if($cmd eq 'analyze') {
       print <file.gcode>      print gcode
          print <file.stl>     slice & print in one go
          print <file.scad>    convert, slice & print in one go
-      analyze <file.gcode>
-         analyze <file.stl>
-         analyze <file.scad>
       render <file.gcode>     render an image (use '--output=sample.png' or so)
          render <file.stl>
          render <file.scad>
@@ -278,6 +257,7 @@ if($cmd eq 'analyze') {
       $me --printer=my_printer.ini gconsole
       > M105
       ...
+
 ";
 }   
 
@@ -619,12 +599,13 @@ sub slicePart {
          push(@a,'--print-center',$pos);
          print "position $pos, " unless($conf{quiet});
       }
-      if($conf{scale} || $conf{rotate} || $conf{translate}) {
+      if($conf{scale} || $conf{rotate} || $conf{translate} || $conf{mirror}) {
          my @fx = ();
          my $n = 0;
          foreach my $f (ref($fn)?@$fn:$fn) {
             my $p = stlRead($f);
             $p = stlRecenter($p);
+            $p = stlMirror($p,[split(/,/,$conf{mirror})]) if(defined $conf{mirror});
             $p = stlScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
             $p = stlRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
             $p = stlTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
@@ -1085,4 +1066,14 @@ sub stlTranslate {
       return ($p[0]+$s->[0],$p[1]+$s->[1],$p[2]+$s->[2]);
    });
 }
+
+sub stlMirror {
+   my($p,$s) = @_;
+   print "mirror: @$s, " if($conf{verbose});
+   return stlTransform($p,sub { 
+      my(@p) = @_;
+      return ($p[0]*($s->[0]?-1:1),$p[1]*($s->[1]?-1:1),$p[2]*($s->[2]?-1:1));
+   });
+}
+
 
