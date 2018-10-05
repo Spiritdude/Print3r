@@ -19,9 +19,9 @@ print3r --printer=prusa-i3.ini print cube.scad
 Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and such.
 
 ## Requirements
-- install `openscad`, see (OpenSCAD.org)[http://www.openscad.org/]
+- install `openscad`, see [OpenSCAD.org](http://www.openscad.org/)
 - install `slic3r`, Debian/Ubuntu: `apt install slic3r`
-- run `make requirements` to install required Perl modules + Perl GD
+- run `make requirements` to install required Perl modules & Perl GD.pm
 
 ## License
 The software is licenses under GPLv3 
