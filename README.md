@@ -21,7 +21,7 @@ Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and 
 ## Requirements
 - install `openscad`, see [OpenSCAD.org](http://www.openscad.org/)
 - install `slic3r`, Debian/Ubuntu: `apt install slic3r`
-- run `make requirements` to install required Perl modules & Perl GD.pm
+- run `make requirements` to install required Perl modules & Perl GD.pm with libgd
 
 ## License
 The software is licensed under GPLv3 
