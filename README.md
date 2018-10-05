@@ -98,7 +98,7 @@ print3r --printer=prusa-i3.ini --multiply-part=3 --scale=0.5 print cube.scad
 ```
 print3r --printer=prusa-i3.ini --output=cube-example.png render cube.scad
 ```
-(https://raw.githubusercontent.com/Spiritdude/Print3r/master/cube-example.png)
+![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/cube-example.png)
 
 ## See Also
 - [Spiritdude Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)
