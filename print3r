@@ -778,7 +778,7 @@ sub printGcode {
    my $layer = 0;
 
    $SIG{INT} = sub {
-      print "\n\taborting print ...\n";
+      print "\n\taborting print (max 20s) ...\n";
       sleep 1;
       open(my $fh,"<","custom/abort.gcode");
       while(<$fh>) {
@@ -976,6 +976,7 @@ sub stlWrite {
 sub stlTransform {
    my($p,$t) = @_;
    my $n = 0;
+   my $nn = 0;
    my $pn = { };
    foreach my $f (@{$p->{facets}}) {
       my @nf;
@@ -987,11 +988,12 @@ sub stlTransform {
       }
       if(@nf==3) {
          $pn->{facets}->[$n++] = \@nf;
+         $nn++;
       } else {
          $pn->{facets}->[$n++] = $f;
       }
    }
-   print "$n facets transformed\n" if($conf{verbose});
+   print "$nn of $n facets transformed\n" if($conf{verbose});
    return $pn;
 }
 

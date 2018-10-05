@@ -24,7 +24,7 @@ Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and 
 - run `make requirements` to install required Perl modules & Perl GD.pm
 
 ## License
-The software is licenses under GPLv3 
+The software is licensed under GPLv3 
 
 ## Install
 
