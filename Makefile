@@ -33,4 +33,4 @@ pull::
 	git pull
 
 push::
-	git push
+	git push -u origin master
