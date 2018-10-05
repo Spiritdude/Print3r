@@ -95,5 +95,5 @@ print3r --printer=prusa-i3.ini --multiply-part=3 --scale=0.5 print cube.scad
 ```
 
 ## See Also
-- (Spiritdude Public Notebook: Print3r)[https://spiritdude.wordpress.com/tag/print3r/]
+- [Spiritdude Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)
 
