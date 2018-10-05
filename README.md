@@ -94,6 +94,12 @@ print3r --printer=prusa-i3.ini --random-placement --rotate=45,0,0 print cube.sca
 print3r --printer=prusa-i3.ini --multiply-part=3 --scale=0.5 print cube.scad
 ```
 
+### Render Example
+```
+print3r --printer=prusa-i3.ini --output=cube-example.png render cube.scad
+```
+(https://raw.githubusercontent.com/Spiritdude/Print3r/master/cube-example.png)
+
 ## See Also
 - [Spiritdude Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)
 
