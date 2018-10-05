@@ -842,7 +842,7 @@ sub printGcode {
    
       if(time()-$lst>1) {
          $com->write(sprintf("M117 %d%% eta %s l#%d\n",100*$pos/$pos_tot,
-            $eta > 36*60 ? int($eta/60/24)."dy" : $eta > 3*60 ? int($eta/60)."h" : $eta."m",
+            $eta > 36*60 ? int($eta/60/24)."dy" : $eta > 3*60 ? int($eta/60)."h" : int($eta)."m",
             $layer));
          printerResponse($com);
          $lst = time();
