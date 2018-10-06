@@ -120,7 +120,7 @@ ln -s prusa-i3.ini default.ini
 print3r print cube.scad
 ```
 
-## Environment Variable `PRINT3R`
+### Environment Variable `PRINT3R`
 You can set any option into PRINT3R environment variable, "&lt;key&gt;=&lt;value&gt;", combined with ":", like:
 ```
 export PRINT3R "printer=prusa-i3.ini:temperature=190:..."
