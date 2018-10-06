@@ -10,9 +10,9 @@ Print `.gcode`, `.stl` and `.scad` files to USB connected 3d printers.
 
 ### Examples
 ```
-print3r --printer=prusa-i3.ini print cube.gcode
-print3r --printer=prusa-i3.ini print cube.stl
-print3r --printer=prusa-i3.ini print cube.scad
+print3r print cube.gcode
+print3r print cube.stl
+print3r print cube.scad
 ```
 
 ## Changelog
@@ -40,7 +40,7 @@ make install
 In order to use slicing and printing command `print3r` requires Slic3r printer configuration:
 - run `slic3r` GUI and configure your printer(s) using the wizard
 - export the configuration (e.g. `my_printer.ini`)
-- reference it with `--printer=my_printer.ini` when you use `print3r`
+- reference it with `--printer=my_printer.ini` or rename it as `default.ini` or reference it in `PRINT3R` environment variable `export PRINT3R "printer=my_printer.ini:..."`
 
 ## Usage
 ```
