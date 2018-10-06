@@ -92,10 +92,11 @@ Print3r (print3r) 0.0.6 USAGE: [<options>] <cmd> <file1> [<...>]
 
 ## More Examples
 ```
-print3r --printer=prusa-i3.ini --fill-density=0 --layer-height=0.2 print cube.scad
-print3r --printer=prusa-i3.ini --print-center=100,100 print cube.scad
-print3r --printer=prusa-i3.ini --random-placement --rotate=45,0,0 print cube.scad
-print3r --printer=prusa-i3.ini --multiply-part=3 --scale=0.5 print cube.scad
+ln -s prusa-i3.ini default.ini
+print3r --fill-density=0 --layer-height=0.2 print cube.scad
+print3r --print-center=100,100 print cube.scad
+print3r --printer=ender3.ini --device=/dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
+print3r --multiply-part=3 --scale=0.5 print cube.scad
 ```
 
 ## Printer Profiles
