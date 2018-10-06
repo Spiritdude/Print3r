@@ -51,7 +51,7 @@ Print3r (print3r) 0.0.7 USAGE: [<options>] <cmd> <file1> [<...>]
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: 115200
       --device=<d>            set device, default: /dev/ttyUSB0
-      --printer=<config.ini>  slic3r config of printer, default: /dev/ttyUSB0
+      --printer=<config.ini>  slic3r config of printer, default: default.ini
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:

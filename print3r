@@ -227,7 +227,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: $conf{baudrate}
       --device=<d>            set device, default: $conf{device}
-      --printer=<config.ini>  slic3r config of printer, default: $conf{device}
+      --printer=<config.ini>  slic3r config of printer, default: $conf{printer}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
