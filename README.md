@@ -19,6 +19,10 @@ print3r print cube.scad
 - 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate.
 - 0.0.6: publically released source on github
 
+### To Do / Planned
+- slicer agnostic, e.g. support of CuraEngine (just the slicer)
+- network connectivity, distributed printing via tcp/ip
+
 ## Platform
 Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and such.
 
