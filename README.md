@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Print3r is a command-line tool (without GUI) to print 3d parts (.stl, .scad) to 3d printer(s).
+Print3r is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printer(s).
 
 ### Main Features
 
