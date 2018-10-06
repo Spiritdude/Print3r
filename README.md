@@ -44,14 +44,14 @@ In order to use slicing and printing command `print3r` requires Slic3r printer c
 
 ## Usage
 ```
-Print3r (print3r) 0.0.6 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.0.7 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: 115200
       --device=<d>            set device, default: /dev/ttyUSB0
-      --printer=<config.ini>  slic3r config of printer
+      --printer=<config.ini>  slic3r config of printer, default: /dev/ttyUSB0
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
@@ -78,15 +78,20 @@ Print3r (print3r) 0.0.6 USAGE: [<options>] <cmd> <file1> [<...>]
       help
    
    examples:
-      print3r --printer=my_printer.ini slice cube.stl
-      print3r --printer=my_printer.ini --layer-height=0.2 --output=test.gcode slice cube.stl
-      print3r --device=/dev/ttyUSB1 print test.gcode
-      print3r --device=/dev/ttyUSB1 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
-      print3r --printer=my_printer.ini print cube.scad
-      print3r --printer=my_printer.ini gcode 'G1 X Y' 'G1 X60' 'G1 Z'
-      print3r --printer=my_printer.ini gconsole
-      > M105
+      ln -s my_printer.ini default.ini --OR-- export PRINT3R "printer=my_printer.ini"
+      print3r slice cube.stl
+      print3r --layer-height=0.2 --output=test.gcode slice cube.stl
+      print3r --printer=ender3.ini --device=/dev/ttyUSB1 print test.gcode
+      print3r --printer=corexy.ini --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      print3r print cube.scad
+      print3r gcode 'G1 X Y' 'G1 X60' 'G1 Z'
+      print3r gconsole
+      == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
+         for valid Gcode see https://reprap.org/wiki/G-code
+         conf: device /dev/ttyUSB0, connected
+      > M115
       ...
+
 
 ```
 
