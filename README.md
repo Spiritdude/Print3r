@@ -113,7 +113,7 @@ There are multiple ways to reference a particular printer profile:
 print3r --printer=prusa-i3.ini print Parts/3DBenchy.stl
 ```
 
-### Default Profile: `default.ini`
+### Default Profile `default.ini`
 If `default.ini` exists, it's considered by default:
 ```
 ln -s prusa-i3.ini default.ini
@@ -129,7 +129,7 @@ print3r print cube.scad
 
 ### Render Example
 ```
-print3r --printer=prusa-i3.ini --output=cube-example.png render cube.scad
+print3r --output=cube-example.png render cube.scad
 ```
 ![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/cube-example.png)
 
