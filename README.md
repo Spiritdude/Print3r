@@ -94,6 +94,29 @@ print3r --printer=prusa-i3.ini --random-placement --rotate=45,0,0 print cube.sca
 print3r --printer=prusa-i3.ini --multiply-part=3 --scale=0.5 print cube.scad
 ```
 
+## Printer Profiles
+
+There are multiple ways to reference a particular printer profile:
+
+### Command Line --printer
+```
+print3r --printer=prusa-i3.ini print Parts/3DBenchy.stl
+```
+
+### Default Profile: `default.ini`
+If `default.ini` exists, it's considered by default:
+```
+ln -s prusa-i3.ini default.ini
+print3r print cube.scad
+```
+
+## Environment Variable `PRINT3R`
+You can set any option into PRINT3R environment variable, "key"="value", combined with ":", like:
+```
+export PRINT3R "printer=prusa-i3.ini:temperature=190:..."
+print3r print cube.scad
+```
+
 ### Render Example
 ```
 print3r --printer=prusa-i3.ini --output=cube-example.png render cube.scad

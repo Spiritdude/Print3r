@@ -25,22 +25,26 @@ use Math::Trig ':pi';
 #use CAD::Format::STL;
 
 my $NAME = "Print3r";
-my $VERSION = '0.0.6';
+my $VERSION = '0.0.7';
 my %conf;
 my $process;
 my @f;
 
 my($me) = ($0=~/\/([^\/]+)$/);
 
+# -- defaults
 $conf{device} = '/dev/ttyUSB0';
 $conf{slicer} = 'slic3r';
+$conf{timeout} = 10;
+$conf{printer} = "default.ini";
+$conf{baudrate} = 115200;
 
 # -- short to long option mapping
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device');
 
 # -- intern option (not to pass on to convertors)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
-   'random-placement'=>1,'multiply-part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,'scad-prepend'=>1);
+   'random-placement'=>1,'multiply-part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,'timeout'=>1,'scad-prepend'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
@@ -49,8 +53,10 @@ $printer->{build}->{x} = 200;
 $printer->{build}->{y} = 200;
 $printer->{build}->{z} = 180;
 
-$conf{baudrate} = 115200;
-
+foreach (split(/:/,$ENV{PRINT3R})) {
+   $conf{$1} = '\1' if(/^([\w\-]+)$/);
+   $conf{$1} = $2, next if(/^([\w\-]+)=(.*)$/);
+}
 foreach (@ARGV) {
    if(/^-(\w+)$/) {
       foreach my $f (split(/|/,$1)) {     # -- '-v' or '-vv' -> "--verbose=2"
@@ -79,7 +85,7 @@ if($conf{verbose}) {
 
 $| = 1;
 
-if($conf{printer}) {                # -- printer profile linked, extract useful information
+if($conf{printer} && -e $conf{printer}) {                # -- printer profile linked, extract useful information
    my $c = readSlicerConf($conf{printer});
    if($c->{bed_shape}) {
       my(@co) = split(/,/,$c->{bed_shape});
@@ -195,12 +201,11 @@ if($cmd eq 'analyze') {          # -- not yet
    print "== $NAME: Gcode Console ($cmd) - use CTRL-C or 'exit' or 'quit' to exit\n";
    print "   for valid Gcode see https://reprap.org/wiki/G-code\n";
    print "conf: device $conf{device}, ";
+
    my $com = Device::SerialPort->new($conf{device}, 1);
-   
-   die "$me: ERROR: can't open $conf{device}" if(!$com);
-   
-   $com->baudrate($conf{baudrate}*1) if($conf{baudrate});
-   
+
+   configSerial($com);
+
    print "connected\n";
    while(1) {
       print "> ";
@@ -221,7 +226,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: $conf{baudrate}
       --device=<d>            set device, default: $conf{device}
-      --printer=<config.ini>  slic3r config of printer
+      --printer=<config.ini>  slic3r config of printer, default: $conf{device}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
@@ -707,16 +712,12 @@ sub slicePart {
    unlink @rm if(@rm);
 }
 
-sub printGcode {
-   my($fn) = shift;
-   my(%conf) = %{@_[0]};
-   my $com = Device::SerialPort->new($conf{device}, 1);
-   
-   if(!$com) {
-      die "$me: ERROR: can't open $conf{device}";
-   }
-   
-   if($conf{baudrate}) {
+sub configSerial {
+   my($com) = @_;
+
+   die "$me: ERROR: can't open $conf{device}" if(!$com);
+
+   if($conf{baudrate} && $conf{baudrate}ne'auto') {
       $com->baudrate($conf{baudrate}*1);
 
    } else {
@@ -726,13 +727,13 @@ sub printGcode {
       foreach my $b (reverse(2400, 9600, 19200, 38400, 57600, 115200, 250000, 500000, 1000000)) {
          my $st = time();
 
+         $com->purge_all;
          $com->baudrate($b);
 
+         sleep 0.5;
+         
          print "probe $b\n" if($conf{verbose}>1);
 
-         $com->purge_all();
-         $com->lookclear();
-         
          $com->write("M115\n");
 
          sleep 0.2;
@@ -749,8 +750,8 @@ sub printGcode {
          } elsif($rd=~/[\0-\037]/) {     # -- gibberish
             last;
          } else {
-            $bb = $b;
-            last;
+            #$bb = $b;
+            #last;
          }
 
          last if($bb);
@@ -763,6 +764,14 @@ sub printGcode {
          die "$me: ERROR: no viable baudrate for $conf{device} found, abort.\n";
       }
    }
+}
+
+sub printGcode {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $com = Device::SerialPort->new($conf{device}, 1);
+   
+   configSerial($com);
 
    my $st = time();
    
@@ -778,7 +787,7 @@ sub printGcode {
    my $layer = 0;
 
    $SIG{INT} = sub {
-      print "\n\taborting print (max 20s) ...\n";
+      print "\n\taborting print (max $conf{timeout}s) ...\n";
       sleep 1;
       open(my $fh,"<","custom/abort.gcode");
       while(<$fh>) {
@@ -787,7 +796,7 @@ sub printGcode {
          next if(/^\s*;/);
          $com->write($_);
 
-         my($resp) = printerResponse($com,$_,{timeout=>20});
+         my($resp) = printerResponse($com,$_,{timeout=>$conf{timeout}});
          last if($resp eq 'abort');
       }
       close($fh);
