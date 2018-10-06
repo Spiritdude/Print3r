@@ -15,6 +15,10 @@ print3r --printer=prusa-i3.ini print cube.stl
 print3r --printer=prusa-i3.ini print cube.scad
 ```
 
+## Changelog
+- 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate.
+- 0.0.6: publically released source on github
+
 ## Platform
 Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and such.
 
@@ -98,7 +102,7 @@ print3r --printer=prusa-i3.ini --multiply-part=3 --scale=0.5 print cube.scad
 
 There are multiple ways to reference a particular printer profile:
 
-### Command Line --printer
+### Command Line `--printer`
 ```
 print3r --printer=prusa-i3.ini print Parts/3DBenchy.stl
 ```
