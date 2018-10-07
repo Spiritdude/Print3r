@@ -48,20 +48,20 @@ In order to use slicing and printing command `print3r` requires Slic3r printer c
 
 ## Usage
 ```
-Print3r (print3r) 0.0.7 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: 115200
       --device=<d>            set device, default: /dev/ttyUSB0
-      --printer=<config.ini>  slic3r config of printer, default: default.ini
+      --printer=<config.ini>  slic3r config of printer, default: ashtar-k-40x30.ini
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
          --random-placement   place print randomly on the bed
          --multiply-part=<n>  multiply part(s)
-         --scale=<x>,<y>,<z>     scale part x,y,z
+         --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
          --scale=<f>             scale part f,f,f
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
