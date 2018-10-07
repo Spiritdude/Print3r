@@ -108,14 +108,15 @@ print3r --print-center=100,100 print cube.scad
 print3r --printer=ender3.ini --device=/dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
 print3r --multiply-part=3 --scale=0.5 print cube.scad
 ```
+
 ### Scaling Parts
-Scaling parts
 ```
 print3r --scale=2 print cube.scad
 print3r --scale=1,4,0.5 print cube.scad
 print3r --scale=50mm print cube.scad
 print3r --scale=0,0,30mm print 3DBenchy.stl
 ```
+
 ## Printer Profiles
 
 There are multiple ways to reference a particular printer profile:
