@@ -16,6 +16,7 @@ print3r print cube.scad
 ```
 
 ## Changelog
+- 0.0.8: absolute scaling like --scale=0,0,30mm or --scale=50mm
 - 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate.
 - 0.0.6: publically released source on github
 
