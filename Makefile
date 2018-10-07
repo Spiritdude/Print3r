@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.0.6
+VERSION=0.0.8
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/local/bin
 CMD=print3r
@@ -34,3 +34,9 @@ pull::
 
 push::
 	git push -u origin master
+
+examples::
+	./print3r --fill-density=0 --output=examples/cube.png render Parts/cube.scad
+	./print3r --fill-density=0 --scale=50mm --output=examples/cube-scaled1.png render Parts/cube.scad
+	./print3r --fill-density=0 --scale=10mm,20mm,100mm --output=examples/cube-scaled2.png render Parts/cube.scad
+	./print3r --fill-density=0 --scale=0,0,150mm --output=examples/benchy-scaled.png render Parts/3DBenchy.stl

@@ -107,7 +107,14 @@ print3r --print-center=100,100 print cube.scad
 print3r --printer=ender3.ini --device=/dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
 print3r --multiply-part=3 --scale=0.5 print cube.scad
 ```
-
+### Scaling Parts
+Scaling parts
+```
+print3r --scale=2 print cube.scad
+print3r --scale=1,4,0.5 print cube.scad
+print3r --scale=50mm print cube.scad
+print3r --scale=0,0,30mm print 3DBenchy.stl
+```
 ## Printer Profiles
 
 There are multiple ways to reference a particular printer profile:
@@ -136,7 +143,7 @@ Instead to actually print parts, you can also let them render into .png image as
 ```
 print3r --output=cube-example.png render cube.scad
 ```
-![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/cube-example.png)
+![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/examples/cube.png)
 
 ## See Also
 - [Spiritdude's Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)

@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
+# 2018/10/07: 0.0.8: absolute scaling like --scale=0,0,30mm or --scale=50mm
 # 2018/10/06: 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate
 # 2018/10/04: 0.0.6: 'scale', 'rotate', 'translate' and 'mirror' implemented
 # 2018/09/30: 0.0.5: slicing .scad, preparing other slicers (like CuraEngine)
@@ -26,7 +27,7 @@ use Math::Trig ':pi';
 #use CAD::Format::STL;
 
 my $NAME = "Print3r";
-my $VERSION = '0.0.7';
+my $VERSION = '0.0.8';
 my %conf;
 my $process;
 my @f;
@@ -233,7 +234,7 @@ if($cmd eq 'analyze') {          # -- not yet
       slice-only:
          --random-placement   place print randomly on the bed
          --multiply-part=<n>  multiply part(s)
-         --scale=<x>,<y>,<z>     scale part x,y,z
+         --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
          --scale=<f>             scale part f,f,f
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
@@ -992,11 +993,16 @@ sub stlTransform {
    my $n = 0;
    my $nn = 0;
    my $pn = { };
+
+   foreach (qw(size min max)) {        # -- TODO: rather recalculate it than just copy
+      $pn->{$_} = $p->{$_};
+   }
    foreach my $f (@{$p->{facets}}) {
       my @nf;
       foreach my $v (@$f) {
          my @nv = &$t(@$v);
          if(@nv==3) {
+         
             push(@nf,\@nv);
          }
       }
@@ -1019,13 +1025,14 @@ sub stlRecenter {
    $max[0] = $max[1] = $max[2] = -1e6;
    $p = stlTransform($p,sub { 
       my(@p) = @_;
-      $min[0] = $p[0] if($p[0]<$min[0]);
-      $min[1] = $p[1] if($p[1]<$min[1]);
-      $min[2] = $p[2] if($p[2]<$min[2]);
-      $max[0] = $p[0] if($p[0]>$max[0]);
-      $max[1] = $p[1] if($p[1]>$max[0]);
-      $max[2] = $p[2] if($p[2]>$max[0]);
+      for(my $i=0; $i<3; $i++) {
+         $min[$i] = $p[$i] if($p[$i]<$min[$i]);
+         $max[$i] = $p[$i] if($p[$i]>$max[$i]);
+      }
    });
+   $p->{min} = \@min;
+   $p->{max} = \@max;
+   $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
    print "recenter: " if($conf{verbose});
    print "min @min, max @max, " if($conf{verbose});
    my $n = 0;
@@ -1042,6 +1049,20 @@ sub stlScale {
    my($p,$s) = @_;
    $s = [@$s[0],@$s[0],@$s[0]] if(ref($s)ne'ARRAY' || @$s!=3);
    print "scale: @$s, " if($conf{verbose});
+
+   my $ns = 1;                   # -- normalized value
+   my $adj;
+   
+   for(my $i=0; $i<3; $i++) {    # -- check any absolute dimension
+      $ns = $s->[$i] = $s->[$i]/$p->{size}->[$i], $adj++ if($s->[$i] && $s->[$i]=~/mm$/);
+   }
+   for(my $i=0; $i<3; $i++) {    # -- adjust any non-set scale factors
+      $s->[$i] = $ns, $adj++ if(!$s->[$i]);
+   }
+   print "adjusted scale: @$s, " if($conf{verbose} && $adj);
+   for(my $i=0; $i<3; $i++) {          # -- update size
+      $p->{size}->[$i] *= $s->[$i];
+   }
    return stlTransform($p,sub { 
       my(@p) = @_;
       return ($p[0]*$s->[0],$p[1]*$s->[1],$p[2]*$s->[2]);
