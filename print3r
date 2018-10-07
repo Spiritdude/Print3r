@@ -600,6 +600,7 @@ sub slicePart {
       # -- compose argument list for slic3r
       push(@a,'--load',$conf{printer}) if($conf{printer});
       if(defined $conf{output}) {
+         unlink $conf{output};
          push(@a,'--output',$conf{output});
       } else {
          push(@a,'--output',$tmp);
@@ -700,18 +701,24 @@ sub slicePart {
    }
    
    wait();
-   if($?) {
-      print "$a[0]: ERROR (bad options/arguments?)\n";
+   my $exit = $? >> 8;
+   if($conf{slicer}ne'slic3r' && $exit) {
+      print "$a[0]: ERROR (bad options/arguments?): $exit\n";
+      exit;
    } else {
       if($conf{slicer}eq'slic3r') {
-         open(my $fh,$conf{output});   # -- try to retrieve filament usage near end of .gcode file
-         seek($fh,4096,-1);
-         my $fu;
-         while(<$fh>) {
-            $fu = $1, last if(/filament used = ([\d\.]+)/);
+         if(open(my $fh,$conf{output})) {   # -- try to retrieve filament usage near end of .gcode file
+            seek($fh,4096,-1);
+            my $fu;
+            while(<$fh>) {
+               $fu = $1, last if(/filament used = ([\d\.]+)/);
+            }
+            close $fh;
+            $process->{filament_used} = $fu, printf "filament usage %.2fm, ",$fu/1000 if($fu);
+         } else {
+            print "$a[0]: ERROR (bad options/arguments?)\n";
+            exit;
          }
-         close $fh;
-         $process->{filament_used} = $fu, printf "filament usage %.2fm, ",$fu/1000 if($fu);
       }
       print "done.\n";
    }
