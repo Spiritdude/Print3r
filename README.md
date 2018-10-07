@@ -89,7 +89,7 @@ Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
       print3r --printer=ender3.ini --device=/dev/ttyUSB1 print test.gcode
       print3r --printer=corexy.ini --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
       print3r print cube.scad
-      print3r gcode 'G1 X Y' 'G1 X60' 'G1 Z'
+      print3r gcode 'G28 X Y' 'G1 X60' 'G28 Z'
       print3r gconsole
       == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
          for valid Gcode see https://reprap.org/wiki/G-code
