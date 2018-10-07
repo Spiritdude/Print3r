@@ -702,7 +702,7 @@ sub slicePart {
    
    wait();
    my $exit = $? >> 8;
-   if($conf{slicer}ne'slic3r' && $exit) {
+   if($conf{slicer}ne'slic3r' && $exit) {          # -- slic3r also fails if verbose=0 (stdout/stderr closed)
       print "$a[0]: ERROR (bad options/arguments?): $exit\n";
       exit;
    } else {
@@ -715,7 +715,7 @@ sub slicePart {
             }
             close $fh;
             $process->{filament_used} = $fu, printf "filament usage %.2fm, ",$fu/1000 if($fu);
-         } else {
+         } else {                           # -- slic3r did not provide any results
             print "$a[0]: ERROR (bad options/arguments?)\n";
             exit;
          }
