@@ -607,9 +607,11 @@ sub slicePart {
          push(@rm,$tmp);
       }
       if($conf{'random-placement'}) {
-         my($pos) = int($printer->{build}->{x}*(rand()*0.5+0.5/2)).",".int($printer->{build}->{y}*(rand()*0.5+0.5/2));
-         push(@a,'--print-center',$pos);
-         print "position $pos, " unless($conf{quiet});
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,'--print-center',join(",",@pos));
+         print "position [$pos[0],$pos[1]], " unless($conf{quiet});
       }
       if($conf{scale} || $conf{rotate} || $conf{translate} || $conf{mirror}) {
          my @fx = ();
@@ -933,6 +935,11 @@ sub stlRead {
    my($fn) = @_;
    my $p = { };
    print "stl read <$fn>\n" if($conf{verbose});
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
    if(open(my $fh,"<",$fn)) {
       my $buff;
       read($fh,$buff,256);
@@ -943,7 +950,17 @@ sub stlRead {
          while(<$fh>) {
             chop;
             push(@$v,[split(/ /,$1)]) if(/vertex (\S.+)/);
-            push(@{$p->{facets}},$v), $v = [], $n++ if(/endloop/);
+            if(/endloop/) {
+               push(@{$p->{facets}},$v);
+               for(my $i=0; $i<3; $i++) {
+                  for(my $j=0; $j<3; $j++) {
+                     # -- update min/max
+                     $min[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]<$min[$j]);
+                     $max[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]>$max[$j]);
+                  }
+               }
+               $v = [], $n++;
+            }
          }
          print "$fn: $n facets\n" if($conf{verbose});
       } else {                   # -- binary
@@ -967,9 +984,20 @@ sub stlRead {
             push(@$v,[unpack($fu,$v3)]);
             #print " @{@v[0]} @{@v[1]} @{@v[2]}\n";
             push(@{$p->{facets}},$v);
+            for(my $i=0; $i<3; $i++) {
+               for(my $j=0; $j<3; $j++) {
+                  # -- update min/max
+                  $min[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]<$min[$j]);
+                  $max[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]>$max[$j]);
+               }
+            }
          }
       }
       close $fh;
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
       return $p;
    } else {
       print STDERR "$NAME: only .stl supported, abort.\n";
@@ -986,7 +1014,6 @@ sub stlWrite {
          print $fh "facet normal 0 0 0\n\touter loop\n";
          foreach my $v (@$f) {
             print $fh "\t\tvertex ",join(" ",@$v),"\n";
-            #print "\t\tvertex ",join(" ",@$v),"\n";
          }
          print $fh "\tendloop\nendfacet\n";
       }
@@ -1001,59 +1028,56 @@ sub stlTransform {
    my $nn = 0;
    my $pn = { };
 
-   foreach (qw(size min max)) {        # -- TODO: rather recalculate it than just copy
-      $pn->{$_} = $p->{$_};
-   }
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
    foreach my $f (@{$p->{facets}}) {
       my @nf;
       foreach my $v (@$f) {
-         my @nv = &$t(@$v);
-         if(@nv==3) {
-         
-            push(@nf,\@nv);
-         }
+         my @nv = &$t(@$v);               # -- per vertice
+         push(@nf,\@nv) if(@nv==3);
       }
       if(@nf==3) {
          $pn->{facets}->[$n++] = \@nf;
          $nn++;
       } else {
          $pn->{facets}->[$n++] = $f;
+         @nf = @$f;
+      }
+      for(my $i=0; $i<3; $i++) {          # -- 3 vertices per face
+         for(my $j=0; $j<3; $j++) {       # -- x,y,z
+            # -- update min/max
+            $min[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]<$min[$j]);
+            $max[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]>$max[$j]);
+         }
       }
    }
+   # -- keep min/max/size up-to-date
+   $pn->{min} = \@min;
+   $pn->{max} = \@max;
+   $pn->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
    print "$nn of $n facets transformed\n" if($conf{verbose});
    return $pn;
 }
 
 sub stlRecenter {
    my($p) = @_;
-   my(@min,@max);
-   print "recenter: determine min/max, " if($conf{verbose});
-   $min[0] = $min[1] = $min[2] = 1e6;
-   $max[0] = $max[1] = $max[2] = -1e6;
-   $p = stlTransform($p,sub { 
-      my(@p) = @_;
-      for(my $i=0; $i<3; $i++) {
-         $min[$i] = $p[$i] if($p[$i]<$min[$i]);
-         $max[$i] = $p[$i] if($p[$i]>$max[$i]);
-      }
-   });
-   $p->{min} = \@min;
-   $p->{max} = \@max;
-   $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
    print "recenter: " if($conf{verbose});
-   print "min @min, max @max, " if($conf{verbose});
+   print "min @{$p->{min}}, max @{$p->{max}}, " if($conf{verbose});
    my $n = 0;
    return stlTransform($p,sub { 
       my(@p) = @_;
-      $p[0] -= ($max[0]-$min[0])/2;
-      $p[1] -= ($max[1]-$min[1])/2;
-      $p[2] -= ($max[2]-$min[2])/2;
+      $p[0] -= ($p->{max}->[0]-$p->{min}->[0])/2;
+      $p[1] -= ($p->{max}->[1]-$p->{min}->[1])/2;
+      $p[2] -= ($p->{max}->[2]-$p->{min}->[2])/2;
       return(@p);
    });
 }
 
 sub stlScale {
    my($p,$s) = @_;
+
    $s = [@$s[0],@$s[0],@$s[0]] if(ref($s)ne'ARRAY' || @$s!=3);
    print "scale: @$s, " if($conf{verbose});
 
