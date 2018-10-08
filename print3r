@@ -802,7 +802,7 @@ sub printGcode {
    $SIG{INT} = sub {
       print "\n\taborting print (max $conf{timeout}s) ...\n";
       sleep 1;
-      open(my $fh,"<","custom/abort.gcode");
+      open(my $fh,"<","gcode/abort.gcode");
       while(<$fh>) {
          my $abort;
          
