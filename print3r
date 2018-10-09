@@ -46,7 +46,7 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device');
 
 # -- intern option (not to pass on to convertors)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
-   'random-placement'=>1,'multiply-part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,'timeout'=>1,'scad-prepend'=>1);
+   'auto-center'=>1,'random-placement'=>1,'multiply-part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,'timeout'=>1,'scad-prepend'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
@@ -233,6 +233,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
          --random-placement   place print randomly on the bed
+         --auto-center        place print in the center
          --multiply-part=<n>  multiply part(s)
          --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
          --scale=<f>             scale part f,f,f
@@ -617,6 +618,8 @@ sub slicePart {
          #          in case there are multiple parts, we don't know how slic3r combines them ...
          push(@a,'--print-center',join(",",@pos));
          print "position [$pos[0],$pos[1]], " unless($conf{quiet});
+      } elsif($conf{'auto-center'}) {
+         push(@a,'--print-center',($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
       }
       if($conf{scale} || $conf{rotate} || $conf{translate} || $conf{mirror}) {
          my @fx = ();
