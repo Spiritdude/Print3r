@@ -544,7 +544,8 @@ sub renderGcode {
             #_printTo($p);
             #$im->line($lx,$ly,$x,$y,$col->{extrusion});
             #$im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$p->{z}/$printer->{build}->{z}*200+$col->{depth});
-            my $c = abs(atan2($lp->{y} - $p->{y},$lp->{x} - $p->{x})) * 3; $c = ($c % 30) / 30 * 100 + $col->{depth};
+            # -- basic shading based on x/y angle
+            my $c = abs(atan2($lp->{y}-$p->{y},$lp->{x}-$p->{x})) * 3; $c = ($c % 30) / 30 * 100 + $col->{depth};
             $im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$c);
             $im->line(_3dto2d($lp,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),_3dto2d($p,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),$c);
             $im->line(_3dto2d($lp,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),_3dto2d($p,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),$c);
