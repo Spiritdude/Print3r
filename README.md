@@ -16,7 +16,7 @@ print3r print cube.scad
 ```
 
 ## Changelog
-- 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`
+- 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`
 - 0.0.7: `PRINT3R` enviromental variable considered, `'baudrate=auto'` probes baudrate.
 - 0.0.6: publically released source on github
 
@@ -107,13 +107,14 @@ ln -s prusa-i3.ini default.ini
 print3r --fill-density=0 --layer-height=0.2 print cube.scad
 print3r --print-center=100,100 print cube.scad
 print3r --printer=ender3.ini --device=/dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
-print3r --multiply-part=3 --scale=0.5 print cube.scad
+print3r --multiply-part=3 --scale=50% print cube.scad
 ```
 
 ### Scaling Parts
 ```
 print3r --scale=2 print cube.scad
 print3r --scale=1,4,0.5 print cube.scad
+print3r --scale=30% print cube.scad
 print3r --scale=50mm print cube.scad
 print3r --scale=0,0,30mm print 3DBenchy.stl
 ```

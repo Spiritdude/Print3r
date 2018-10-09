@@ -11,7 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2018/10/07: 0.0.8: absolute scaling like --scale=0,0,30mm or --scale=50mm
+# 2018/10/07: 0.0.8: absolute scaling like --scale=0,0,30mm or --scale=50mm, and `--scale=50%` same as --scale=0.5
 # 2018/10/06: 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate
 # 2018/10/04: 0.0.6: 'scale', 'rotate', 'translate' and 'mirror' implemented
 # 2018/09/30: 0.0.5: slicing .scad, preparing other slicers (like CuraEngine)
@@ -301,12 +301,12 @@ sub scadToSTL {
       }
       exec(@a);
    }
-   print "$me: scad to stl: ";
+   print "$me: scad to stl: " unless($conf{quiet});
    wait();
    if($?) {
       print "openscad: ERROR (bad options/arguments?)\n";
    } else {
-      print "done.\n";
+      print "done.\n" unless($conf{quiet});
    }
    #unlink $tmp if(-e $tmp);
 }
@@ -333,7 +333,7 @@ sub renderScad {
    if($?) {
       print "openscad: ERROR (bad options/arguments?)\n";
    } else {
-      print "done.\n";
+      print "done.\n" unless($conf{quiet});
    }
 }
 
@@ -359,13 +359,13 @@ sub renderSTL {
          exec("openscad","-o",$conf{output},"--imgsize","512,512",$tmp);
       }
    }
-   print "render stl: ";
+   print "render stl: " unless($conf{quiet});
    wait();
    unlink $tmp;
    if($?) {
       print "openscad: ERROR (bad options/arguments?)\n";
    } else {
-      print "done.\n";
+      print "done.\n" unless($conf{quiet});
    }
 }
 
@@ -441,7 +441,7 @@ sub renderGcode {
 
    use GD;
 
-   print "$me: render: ";
+   print "$me: render: " unless($conf{quiet});
 
    my($w,$h) = (512+256,512);
    my $im = new GD::Image($w,$h);
@@ -577,8 +577,11 @@ sub renderGcode {
    binmode($fh);
    print $fh $im->png();
    close $fh;
-   print "$conf{output}, ";
-   print "done.\n";
+
+   unless($conf{quiet}) {
+      print "$conf{output}, ";
+      print "done.\n";
+   }
 }
 
 sub slicePart {
@@ -594,7 +597,7 @@ sub slicePart {
    
    my @a = ($conf{slicer});
 
-   print "$me: slice part".(ref($fn) && @$fn>1?"s":"")." to gcode: ";
+   print "$me: slice part".(ref($fn) && @$fn>1?"s":"")." to gcode: " unless($conf{quiet});
    
    if($conf{slicer}eq'slic3r') {
       # -- compose argument list for slic3r
@@ -623,6 +626,7 @@ sub slicePart {
             $p = stlScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
             $p = stlRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
             $p = stlTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
+            printf "size %.1fx%1.fx%.1f, ",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
             my $tmp = "/tmp/print3r-$$-$n.stl";
             stlWrite($tmp,$p);
             $n++;
@@ -716,13 +720,16 @@ sub slicePart {
                $fu = $1, last if(/filament used = ([\d\.]+)/);
             }
             close $fh;
-            $process->{filament_used} = $fu, printf "filament usage %.2fm, ",$fu/1000 if($fu);
+            if($fu) {
+               $process->{filament_used} = $fu;
+               printf "filament usage %.2fm, ",$fu/1000 unless($conf{quiet});
+            }
          } else {                           # -- slic3r did not provide any results
             print "$a[0]: ERROR (bad options/arguments?)\n";
             exit;
          }
       }
-      print "done.\n";
+      print "done.\n" unless($conf{quiet});
    }
    unlink @rm if(@rm);
 }
@@ -1079,17 +1086,19 @@ sub stlScale {
    my($p,$s) = @_;
 
    $s = [@$s[0],@$s[0],@$s[0]] if(ref($s)ne'ARRAY' || @$s!=3);
-   print "scale: @$s, " if($conf{verbose});
 
    my $ns = 1;                   # -- normalized value
    my $adj;
    
-   for(my $i=0; $i<3; $i++) {    # -- check any absolute dimension
+   print "scale: @$s, " if($conf{verbose});
+   for(my $i=0; $i<3; $i++) {    # -- check any absolute dimension or percentage
       $ns = $s->[$i] = $s->[$i]/$p->{size}->[$i], $adj++ if($s->[$i] && $s->[$i]=~/mm$/);
+      $ns = $s->[$i] = $s->[$i]/100, $adj++ if($s->[$i] && $s->[$i]=~/%$/);
    }
    for(my $i=0; $i<3; $i++) {    # -- adjust any non-set scale factors
       $s->[$i] = $ns, $adj++ if(!$s->[$i]);
    }
+   printf "scale %.1f,%.1f,%.1f, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
    print "adjusted scale: @$s, " if($conf{verbose} && $adj);
    for(my $i=0; $i<3; $i++) {          # -- update size
       $p->{size}->[$i] *= $s->[$i];
@@ -1103,6 +1112,7 @@ sub stlScale {
 sub stlRotate {
    my($p,$s) = @_;
    my(@r) = ($s->[0] * pi/180,$s->[1] * pi/180,$s->[2] * pi/180);
+   printf "rotate %.1f,%.1f,%.1f, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
    print "rotate: @$s, " if($conf{verbose});
    return stlTransform($p,sub { 
       my(@p) = @_;
@@ -1128,7 +1138,8 @@ sub stlRotate {
 
 sub stlTranslate {
    my($p,$s) = @_;
-   print "translate: @$s, " if($conf{verbose});
+   printf "translate %.1f,%.1f,%.1f, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print "translate: @$s, "; # if($conf{verbose});
    return stlTransform($p,sub { 
       my(@p) = @_;
       return ($p[0]+$s->[0],$p[1]+$s->[1],$p[2]+$s->[2]);
@@ -1137,6 +1148,7 @@ sub stlTranslate {
 
 sub stlMirror {
    my($p,$s) = @_;
+   printf "mirror %d,%d,%d, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
    print "mirror: @$s, " if($conf{verbose});
    return stlTransform($p,sub { 
       my(@p) = @_;
