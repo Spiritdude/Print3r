@@ -39,4 +39,5 @@ examples::
 	./print3r --fill-density=0 --output=examples/cube.png render Parts/cube.scad
 	./print3r --fill-density=0 --scale=50mm --output=examples/cube-scaled1.png render Parts/cube.scad
 	./print3r --fill-density=0 --scale=10mm,20mm,100mm --output=examples/cube-scaled2.png render Parts/cube.scad
+	./print3r --fill-density=0 --output=examples/benchy.png render Parts/3DBenchy.stl
 	./print3r --fill-density=0 --scale=0,0,150mm --output=examples/benchy-scaled.png render Parts/3DBenchy.stl

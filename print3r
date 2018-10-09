@@ -38,7 +38,7 @@ my($me) = ($0=~/\/([^\/]+)$/);
 $conf{device} = '/dev/ttyUSB0';
 $conf{slicer} = 'slic3r';
 $conf{timeout} = 10;
-$conf{printer} = "default.ini";
+$conf{printer} = "default.ini" if(-e "default.ini");
 $conf{baudrate} = 115200;
 
 # -- short to long option mapping
