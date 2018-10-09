@@ -23,6 +23,7 @@ print3r print cube.scad
 ### To Do / Planned
 - slicer agnostic, e.g. support of CuraEngine (just the slicer)
 - network connectivity, distributed printing via tcp/ip
+- preview gcode in OpenGL/WebGL zoomable views
 
 ## Platform
 Primary focus in on Linux (Debian, Ubuntu) and alike platforms like FreeBSD and such.
