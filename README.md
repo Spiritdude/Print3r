@@ -143,9 +143,9 @@ print3r print cube.scad
 ### Render Example
 Instead to actually print parts, you can also let them render into .png image as well (e.g. for documentation purposes or preview):
 ```
-print3r --output=cube-example.png render cube.scad
+print3r --output=benchy.png render 3DBenchy.scad
 ```
-![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/examples/cube.png)
+![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/examples/benchy.png)
 
 ## See Also
 - [Spiritdude's Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)
