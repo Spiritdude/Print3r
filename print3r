@@ -404,7 +404,7 @@ sub _3dto2d {
          my $x_ = $p->{x} - $view->{x} - $loc->{x};
          my $y_ = $p->{z} - $view->{z} - $loc->{y};
          my $z_ = $p->{y} - $view->{y} - $loc->{z};
-         $z_ = $z_/2;
+         $z_ = $z_ / 2;
          $x = (+($x_ / $z_)) * $im->{width}/2 + $im->{width}/2;
          $y = (-($y_ / $z_)) * $im->{height}/2 + $im->{height}/2;
       } else {
@@ -454,8 +454,8 @@ sub renderGcode {
    $col->{bed_raster} = $im->colorAllocate(210,210,210);
    $col->{bed_raster2} = $im->colorAllocate(220,220,220);
    
-   foreach my $r (0..200) {
-      my $n = $im->colorAllocate($r*0.5,20+$r,$r*0.5);
+   foreach my $r (0..100) {
+      my $n = $im->colorAllocate($r/100*128+60,$r/100*128+127,$r/100*128+60);
       $col->{depth} = $n unless($col->{depth});
    }
 
@@ -544,9 +544,10 @@ sub renderGcode {
             #_printTo($p);
             #$im->line($lx,$ly,$x,$y,$col->{extrusion});
             #$im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$p->{z}/$printer->{build}->{z}*200+$col->{depth});
-            $im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$col->{extrusion});
-            $im->line(_3dto2d($lp,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),_3dto2d($p,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),$col->{extrusion});
-            $im->line(_3dto2d($lp,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),_3dto2d($p,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),$col->{extrusion});
+            my $c = abs(atan2($lp->{y} - $p->{y},$lp->{x} - $p->{x})) * 3; $c = ($c % 30) / 30 * 100 + $col->{depth};
+            $im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$c);
+            $im->line(_3dto2d($lp,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),_3dto2d($p,'front',{xoff=>512,yoff=>0,width=>$w1/2,height=>$h1/2}),$c);
+            $im->line(_3dto2d($lp,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),_3dto2d($p,'side',{xoff=>512,yoff=>256,width=>$w2/2,height=>$h2/2}),$c);
          } else {
             #_moveTo($p);
          }
@@ -626,7 +627,7 @@ sub slicePart {
             $p = stlScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
             $p = stlRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
             $p = stlTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
-            printf "size %.1fx%1.fx%.1f, ",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
+            printf "size %.1fx%.1fx%.1f, ",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
             my $tmp = "/tmp/print3r-$$-$n.stl";
             stlWrite($tmp,$p);
             $n++;
