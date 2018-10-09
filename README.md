@@ -16,7 +16,7 @@ print3r print cube.scad
 ```
 
 ## Changelog
-- 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`
+- 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`, '--auto-center' to center print
 - 0.0.7: `PRINT3R` enviromental variable considered, `'baudrate=auto'` probes baudrate.
 - 0.0.6: publically released source on github
 
@@ -62,6 +62,7 @@ Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
          --random-placement   place print randomly on the bed
+         --auto-center        place print in the center
          --multiply-part=<n>  multiply part(s)
          --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
          --scale=<f>             scale part f,f,f
