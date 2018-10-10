@@ -17,7 +17,7 @@ print3r print cube.scad
 - **preprocess parts** with `--scale=<x>,<y>,<z>`, `--rotate=<x>,<y>,<z>`, `--translate=<x>,<y>,<z>`, `--random-placement`, `--auto-center`, `--multiply-part=<n>`
 - **use Slic3r arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, `--skirts=<n>` etc.
 - **send Gcode** from command line arguments or console interactively
-- **render** Gcode into `.png` image
+- **render Gcode** (and .stl, .scad) into `.png` image
  
 ## Changelog
 - 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`, `--auto-center` to center print
