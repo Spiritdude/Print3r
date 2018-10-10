@@ -14,7 +14,8 @@ print3r print cube.scad
 ### Main Features
 - **print** `.scad`, `.stl` or `.gcode` to 3d printers
 - **slice** `.scad` or `.stl` saving `.gcode` without printing
-- **preprocess parts** with `scale`, `rotate`, `translate`, `random-placement`, `auto-center`, `multiply-part`
+- **preprocess parts** with `--scale=<x>,<y>,<z>`, `--rotate=<x>,<y>,<z>`, `--translate=<x>,<y>,<z>`, `--random-placement`, `--auto-center`, `--multiply-part=<n>`
+- use Slic3r arguments like `--temperature=<c>`, `--layer-height=<h>`, `--skirts=<n>` etc
 - **send Gcode** from command line arguments or console interactively
  
 ## Changelog
