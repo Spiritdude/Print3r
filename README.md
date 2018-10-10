@@ -61,7 +61,7 @@ Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: 115200
       --device=<d>            set device, default: /dev/ttyUSB0
-      --printer=<config.ini>  slic3r config of printer, default: ashtar-k-40x30.ini
+      --printer=<config.ini>  slic3r config of printer, default: default.ini
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       slice-only:
@@ -147,7 +147,7 @@ export PRINT3R "printer=prusa-i3.ini:temperature=190:..."
 print3r print cube.scad
 ```
 
-### Render Example
+## Render Example
 Instead to actually print parts, you can also let them render into .png image as well (e.g. for documentation purposes or preview):
 ```
 print3r --output=benchy.png render 3DBenchy.stl
