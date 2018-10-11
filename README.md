@@ -57,7 +57,7 @@ In order to use slicing and printing command `print3r` requires Slic3r printer c
 
 ## Usage
 ```
-Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.0.9 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
@@ -105,7 +105,6 @@ Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
          conf: device /dev/ttyUSB0, connected
       > M115
       ...
-
 
 ```
 
