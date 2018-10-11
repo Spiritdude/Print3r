@@ -654,6 +654,9 @@ sub slicePart {
          }
          $fn = \@fx;
          push(@rm,@fx);
+
+      } else {
+         print "prepare" unless($conf{quiet});
       }
    
    	if(fork()==0) {
