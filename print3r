@@ -240,7 +240,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --printer=<config.ini>  slic3r config of printer, default: $conf{printer}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
-      slice-only:
+      part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
          --multiply-part=<n>  multiply part(s)
@@ -1126,6 +1126,8 @@ sub objRead {
    my($fn) = @_;
    my $p = { };
    print ", obj read <$fn>\n" if($conf{verbose});
+   
+   my $err;
 
    my(@min,@max);
    $min[0] = $min[1] = $min[2] = 1e6;
@@ -1155,8 +1157,9 @@ sub objRead {
             push(@{$p->{facets}},\@fc);
          } elsif(/^\s*$/) {
             ;
-         } elsif(/^\s*$/) {
-            print "$NAME: WARN: '$_' in <$fn> not supported yet, ignored\n";
+         } elsif(/^(\S+)/) {
+            print "$NAME: WARN: '$1' in <$fn> not supported yet, ignored\n" if(!$err->{$1});
+            $err->{$1}++;
          }
       }
       close $fh;

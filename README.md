@@ -17,7 +17,7 @@ print3r print cube.scad
 - **preprocess parts** with `--scale=<x>,<y>,<z>`, `--rotate=<x>,<y>,<z>`, `--translate=<x>,<y>,<z>`, `--random-placement`, `--auto-center`, `--multiply-part=<n>`
 - **use Slic3r arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, `--skirts=<n>` etc.
 - **send Gcode** from command line arguments or console interactively
-- **render Gcode** (and .stl, .scad) into `.png` image
+- **render Gcode** and sliced .stl, .scad into `.png` image
 
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
@@ -67,7 +67,7 @@ Print3r (print3r) 0.0.8 USAGE: [<options>] <cmd> <file1> [<...>]
       --printer=<config.ini>  slic3r config of printer, default: default.ini
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
-      slice-only:
+      part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
          --multiply-part=<n>  multiply part(s)
