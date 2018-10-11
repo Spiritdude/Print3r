@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.0.8
+VERSION=0.0.9
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/local/bin
 CMD=print3r
@@ -8,7 +8,7 @@ all::
 	@echo "make requirements install deinstall"
 
 requirements::
-	sudo cpan Time::HiRes Device::SerialPort
+	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON
 	sudo apt install libgd-perl
 
 install::

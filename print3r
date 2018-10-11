@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
+# 2018/10/10: 0.0.9: '.amf' and '.obj' native support for preprocessing (scale,rotate,translate,mirror)
 # 2018/10/07: 0.0.8: absolute scaling like --scale=0,0,30mm or --scale=50mm, and `--scale=50%` same as --scale=0.5
 # 2018/10/06: 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate
 # 2018/10/04: 0.0.6: 'scale', 'rotate', 'translate' and 'mirror' implemented
@@ -24,10 +25,11 @@ use strict;
 use Time::HiRes qw(time sleep);
 use Device::SerialPort;
 use Math::Trig ':pi';
-#use CAD::Format::STL;
+use JSON;                          
+use XML::Simple;                    # -- reading .amf (XML)
 
 my $NAME = "Print3r";
-my $VERSION = '0.0.8';
+my $VERSION = '0.0.9';
 my %conf;
 my $process;
 my @f;
@@ -87,6 +89,8 @@ if($conf{verbose}) {
 
 $| = 1;
 
+my @f_in = @f;
+
 if($conf{printer} && -e $conf{printer}) {                # -- printer profile linked, extract useful information
    my $c = readSlicerConf($conf{printer});
    if($c->{bed_shape}) {
@@ -139,16 +143,19 @@ if($cmd eq 'analyze') {          # -- not yet
    my(@fx);
    my $o = $conf{output};     # -- preserve original setting
    
+   my $n = 0;
    foreach my $fn (@f) {
+      $o = $fn, $o =~ s/\.\w+$/.png/ unless($o);
+
       if($fn=~/\.scad$/i) {
-         $conf{output} = "/tmp/print3r-$$.stl";
+         $conf{output} = "/tmp/print3r-$$-$n.stl";
          scadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
       }
 
       if($fn=~/\.(\w+)$/ && $sliceExtSupported{lc($1)}) {
-         $conf{output} = "/tmp/print3r-$$.gcode";
+         #$conf{output} = "/tmp/print3r-$$-$n.gcode";
          #slicePart($fn,\%conf);
          #$fn = $conf{output};
          #push(@rm,$fn);
@@ -165,17 +172,19 @@ if($cmd eq 'analyze') {          # -- not yet
       } else {
          print "$me: ERROR: can't print <$fn>, skipped.\n";
       }
+      $n++;
    }
    if(@fx) {                           # -- slice all parts together and print then
       my $fn = $conf{output} = "/tmp/print3r-$$.gcode";
       slicePart(\@fx,\%conf); 
       push(@rm,$fn);
       if($cmd eq 'render') {
-         if($o) {
+         if(defined $o) {
             $conf{output} = $o;
          } else {
-            $conf{output} = $fn; $conf{output} =~ s/\.[^\/\.]$/.png/;
+            $conf{output} = $fn;
          }
+         $conf{output} =~ s/\.[^\/\.]$/.png/;
          renderGcode($fn,\%conf);
       } else {
          printGcode($fn,\%conf);
@@ -302,12 +311,12 @@ sub scadToSTL {
       }
       exec(@a);
    }
-   print "$me: scad to stl: " unless($conf{quiet});
+   print "$me: scad to stl: <$fn>" unless($conf{quiet});
    wait();
    if($?) {
       print "openscad: ERROR (bad options/arguments?)\n";
    } else {
-      print "done.\n" unless($conf{quiet});
+      print ", done.\n" unless($conf{quiet});
    }
    #unlink $tmp if(-e $tmp);
 }
@@ -424,9 +433,12 @@ sub renderGcode {
       print "$me: ERROR: you can only render .gcode files but not <$fn>, skipped\n";
       return;
    }
-   open(my $fh,"<",$fn);
-   return if(!$fh);
-
+   my $fh;
+   if(!open($fh,"<",$fn)) {
+      print "$NAME: ERROR: <$fn> not found, abort.\n";
+      exit -1;
+   }
+   
    seek($fh,4096,-1);         # -- try to parse end of .gcode from slic3r to pick up metadata
    my $tail;
    while(<$fh>) {
@@ -442,7 +454,8 @@ sub renderGcode {
 
    use GD;
 
-   print "$me: render: " unless($conf{quiet});
+   print "$me: render: read gcode" unless($conf{quiet});
+   print ", reading <$fn>" if($conf{verbose});
 
    my($w,$h) = (512+256,512);
    my $im = new GD::Image($w,$h);
@@ -560,37 +573,37 @@ sub renderGcode {
    }
    close $fh;
    my $l = 0;
-   my $lh = 15;
-   $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.fx%.fmm",'bed',$printer->{build}->{x},$printer->{build}->{y}),$col->{box}); $l += $lh;
-   if($printer->{nozzle_diameter}) {
-      $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fmm",'nozzle/d',$printer->{nozzle_diameter}),$col->{box}); $l += $lh;
-   }
-   if($printer->{layer_height}) {
-      $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fmm",'layer/h',$printer->{layer_height}),$col->{box}); $l += $lh;
-   }
-   if($printer->{filament_diameter}) {
-      $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fmm",'filament/d',$printer->{filament_diameter}),$col->{box}); $l += $lh;
-   }
-   if($process->{filament_used}) {
-      $im->string(gdSmallFont,5,5+$l,sprintf("%15s %.2fm",'filament used',$process->{filament_used}/1000),$col->{box}); $l += $lh;
-   }
+   my $print = sub {
+      $im->string(gdSmallFont,5,5+$l*15,$_[0],$col->{box});
+      $l++;
+   };
+   &$print(sprintf("%15s %s","part".(@f_in>1?"s":""),join(' ',@f_in)));
+   &$print(sprintf("%15s %.fx%.fmm",'bed',$printer->{build}->{x},$printer->{build}->{y}));
+   &$print(sprintf("%15s %.2fmm",'nozzle/d',$printer->{nozzle_diameter})) if($printer->{nozzle_diameter});
+   &$print(sprintf("%15s %.2fmm",'layer/h',$printer->{layer_height})) if($printer->{layer_height});
+   &$print(sprintf("%15s %.2fmm",'filament/d',$printer->{filament_diameter})) if($printer->{filament_diameter});
+   &$print(sprintf("%15s %.2fm",'filament used',$process->{filament_used}/1000)) if($process->{filament_used});
+   &$print(sprintf("%15s %s%s",'slicer',$conf{slicer},$process->{time}->{slice}?sprintf(" (%dm %ds)",int($process->{time}->{slice}/60),$process->{time}->{slice}%60):""));
    
+   # $im->string(gdSmallFont,5,512-15,"$NAME $VERSION",$col->{box});
+   
+   print ", write '$conf{output}'" unless($conf{quiet});
    $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.png/ unless($conf{output});
    open(my $fh,">",$conf{output});
    binmode($fh);
    print $fh $im->png();
    close $fh;
 
-   unless($conf{quiet}) {
-      print "$conf{output}, ";
-      print "done.\n";
-   }
+   print ", done.\n" unless($conf{quiet});
 }
+
+# ---------------------------------------------------------------------------------------------------------------
 
 sub slicePart {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
-
+   my $st = time();
+   
    if(!ref($fn) && $fn=~/\.(\w+)$/ && !$sliceExtSupported{lc($1)}) {
       print "$me: ERROR: you can only slice .stl, .amf, .obj or .3mf files but not <$fn>, skipped\n";
       return;
@@ -625,17 +638,19 @@ sub slicePart {
          my @fx = ();
          my $n = 0;
          foreach my $f (ref($fn)?@$fn:$fn) {
-            my $p = stlRead($f);
-            $p = stlRecenter($p);
-            $p = stlMirror($p,[split(/,/,$conf{mirror})]) if(defined $conf{mirror});
-            $p = stlScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
-            $p = stlRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
-            $p = stlTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
-            printf "size %.1fx%.1fx%.1f, ",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
+            print ", " if($n);
+            printf "read %s",$f=~/^\/tmp/?"part":"'$f'" unless($conf{quiet});
+            my $p = partRead($f);
+            $p = partRecenter($p);
+            $p = partMirror($p,[split(/,/,$conf{mirror})]) if(defined $conf{mirror});
+            $p = partScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
+            $p = partRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
+            $p = partTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
+            printf ", size %.1fx%.1fx%.1f",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
             my $tmp = "/tmp/print3r-$$-$n.stl";
             stlWrite($tmp,$p);
-            $n++;
             push(@fx,$tmp);
+            $n++;
          }
          $fn = \@fx;
          push(@rm,@fx);
@@ -652,6 +667,7 @@ sub slicePart {
          }
          if($conf{'multiply-part'}) {
             push(@a,"--merge");
+            print ", multiply $conf{'multiply-part'}x" unless($conf{quiet});
             foreach(1..$conf{'multiply-part'}) {
                push(@a,ref($fn)?@$fn:$fn);
             }
@@ -663,7 +679,8 @@ sub slicePart {
                push(@a,$fn);
             }
          }
-         print "exec: @a\n" if($conf{verbose});
+         print ", slice" unless($conf{quiet});
+         print ", exec: @a\n" if($conf{verbose});
          unless($conf{verbose}) {
             close STDERR;
             close STDOUT;
@@ -702,7 +719,7 @@ sub slicePart {
                push(@a,"-l",$fn);
             }
          }
-         print "exec: @a\n" if($conf{verbose});
+         print ", exec: @a\n" if($conf{verbose});
          unless($conf{verbose}) {
             close STDERR;
             close STDOUT;
@@ -712,13 +729,16 @@ sub slicePart {
    }
    
    wait();
+   
+   $process->{time}->{slice} = time()-$st;
+   
    my $exit = $? >> 8;
    if($conf{slicer}ne'slic3r' && $exit) {          # -- slic3r also fails if verbose=0 (stdout/stderr closed)
       print "$a[0]: ERROR (bad options/arguments?): $exit\n";
       exit;
    } else {
       if($conf{slicer}eq'slic3r') {
-         if(open(my $fh,$conf{output})) {   # -- try to retrieve filament usage near end of .gcode file
+         if(open(my $fh,$conf{output})) {          # -- try to retrieve filament usage near end of .gcode file
             seek($fh,4096,-1);
             my $fu;
             while(<$fh>) {
@@ -727,14 +747,14 @@ sub slicePart {
             close $fh;
             if($fu) {
                $process->{filament_used} = $fu;
-               printf "filament usage %.2fm, ",$fu/1000 unless($conf{quiet});
+               printf ", filament usage %.2fm",$fu/1000 unless($conf{quiet});
             }
          } else {                           # -- slic3r did not provide any results
             print "$a[0]: ERROR (bad options/arguments?)\n";
             exit;
          }
       }
-      print "done.\n" unless($conf{quiet});
+      print ", done.\n" unless($conf{quiet});
    }
    unlink @rm if(@rm);
 }
@@ -929,6 +949,8 @@ sub printerResponse {
    return $resp;
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+
 sub readSlicerConf {
    my($fn) = @_;
    my $i;
@@ -943,10 +965,26 @@ sub readSlicerConf {
    return $i;
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+
+sub partRead {
+   my($fn) = @_;
+   if($fn=~/\.stl$/i) {
+      return stlRead($fn);
+   } elsif($fn=~/\.amf$/i) {
+      return amfRead($fn);
+   } elsif($fn=~/\.obj$/i) {
+      return objRead($fn);
+   } else {
+      print "$me: ERROR: for internal preprocessing (scale,rotate,etc) only .stl, .amf, .obj, no support for <$fn>\n";
+      exit -1;
+   }
+}
+
 sub stlRead {
    my($fn) = @_;
    my $p = { };
-   print "stl read <$fn>\n" if($conf{verbose});
+   print ", stl read <$fn>\n" if($conf{verbose});
 
    my(@min,@max);
    $min[0] = $min[1] = $min[2] = 1e6;
@@ -1019,7 +1057,7 @@ sub stlRead {
 
 sub stlWrite {
    my($fn,$p) = @_;
-   print "stl writing <$fn>\n" if($conf{verbose});
+   print ", stl writing <$fn>\n" if($conf{verbose});
    if(open(my $fh,">",$fn)) {
       print $fh "solid\n";
       foreach my $f (@{$p->{facets}}) {
@@ -1034,7 +1072,110 @@ sub stlWrite {
    }
 }
 
-sub stlTransform {
+sub amfRead {
+   my($fn) = @_;
+   my $p = { };
+   print ", amf read <$fn>\n" if($conf{verbose});
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      local $/;
+      my $buff = <$fh>;
+      close $fh;
+      
+      my $xml = XMLin($buff);
+      my $fa = 1; 
+      $fa = 25.4 if($xml->{unit}eq'inch');
+      $fa = 1000 if($xml->{unit}eq'meter');
+      $fa = 100 if($xml->{unit}eq'cm');
+      $fa = 10 if($xml->{unit}eq'dm');
+      foreach my $o (ref($xml->{object})eq'ARRAY'?@{$xml->{object}}:$xml->{object}) {
+         foreach my $m (ref($o->{mesh})eq'ARRAY'?${$o->{mesh}}:$o->{mesh}) {
+            my @vs;
+            foreach my $v (ref($m->{vertices}->{vertex})?@{$m->{vertices}->{vertex}}:$m->{vertices}->{vertex}) {
+               my(@p) = ($v->{coordinates}->{x}*$fa,$v->{coordinates}->{y}*$fa,$v->{coordinates}->{z}*$fa);
+               for(my $i=0; $i<3; $i++) {
+                  $min[$i] = $p[$i] if($p[$i]<$min[$i]);
+                  $max[$i] = $p[$i] if($p[$i]>$max[$i]);
+               }
+               push(@vs,\@p);
+            }
+            foreach my $t (ref($m->{volume})eq'ARRAY'?@{$m->{volume}}:$m->{volume}) {
+               foreach my $c (@{$t->{triangle}}) {
+                  push(@{$p->{facets}},[$vs[$c->{v1}],$vs[$c->{v2}],$vs[$c->{v3}]]);
+               }
+            }
+         }
+      }
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+
+   } else {
+      print STDERR "$NAME: only .amf supported, abort.\n";
+      exit;
+   }
+}
+
+sub objRead {
+   my($fn) = @_;
+   my $p = { };
+   print ", obj read <$fn>\n" if($conf{verbose});
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      my(@vs);
+      while(<$fh>) {
+         chop;
+         next if(/^\s*#/);
+         if(/^v /) {
+            my(@c) = split(/ +/);
+            shift(@c);
+            push(@vs,[$c[0],$c[1],$c[2]]);
+            for(my $i=0; $i<3; $i++) {
+               $min[$i] = $c[$i] if($min[$i]>$c[$i]);
+               $max[$i] = $c[$i] if($max[$i]<$c[$i]);
+            }
+         } elsif(/^f /) {
+            my(@c) = split(/ +/);
+            my(@fc);
+            shift(@c);
+            foreach (@c) {
+               s/\/.*$//;
+               push(@fc,$vs[$_-1]);
+            }
+            push(@{$p->{facets}},\@fc);
+         } elsif(/^\s*$/) {
+            ;
+         } elsif(/^\s*$/) {
+            print "$NAME: WARN: '$_' in <$fn> not supported yet, ignored\n";
+         }
+      }
+      close $fh;
+      
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+      
+   } else {
+      print STDERR "$NAME: only .amf supported, abort.\n";
+      exit;
+   }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub partTransform {
    my($p,$t) = @_;
    my $n = 0;
    my $nn = 0;
@@ -1073,12 +1214,12 @@ sub stlTransform {
    return $pn;
 }
 
-sub stlRecenter {
+sub partRecenter {
    my($p) = @_;
-   print "recenter: " if($conf{verbose});
+   print ", recenter: " if($conf{verbose});
    print "min @{$p->{min}}, max @{$p->{max}}, " if($conf{verbose});
    my $n = 0;
-   return stlTransform($p,sub { 
+   return partTransform($p,sub { 
       my(@p) = @_;
       $p[0] -= ($p->{max}->[0]-$p->{min}->[0])/2;
       $p[1] -= ($p->{max}->[1]-$p->{min}->[1])/2;
@@ -1087,7 +1228,7 @@ sub stlRecenter {
    });
 }
 
-sub stlScale {
+sub partScale {
    my($p,$s) = @_;
 
    $s = [@$s[0],@$s[0],@$s[0]] if(ref($s)ne'ARRAY' || @$s!=3);
@@ -1095,7 +1236,7 @@ sub stlScale {
    my $ns = 1;                   # -- normalized value
    my $adj;
    
-   print "scale: @$s, " if($conf{verbose});
+   print ", scale: @$s" if($conf{verbose});
    for(my $i=0; $i<3; $i++) {    # -- check any absolute dimension or percentage
       $ns = $s->[$i] = $s->[$i]/$p->{size}->[$i], $adj++ if($s->[$i] && $s->[$i]=~/mm$/);
       $ns = $s->[$i] = $s->[$i]/100, $adj++ if($s->[$i] && $s->[$i]=~/%$/);
@@ -1103,23 +1244,23 @@ sub stlScale {
    for(my $i=0; $i<3; $i++) {    # -- adjust any non-set scale factors
       $s->[$i] = $ns, $adj++ if(!$s->[$i]);
    }
-   printf "scale %.1f,%.1f,%.1f, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
-   print "adjusted scale: @$s, " if($conf{verbose} && $adj);
+   printf ", scale %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", adjusted scale: @$s, " if($conf{verbose} && $adj);
    for(my $i=0; $i<3; $i++) {          # -- update size
       $p->{size}->[$i] *= $s->[$i];
    }
-   return stlTransform($p,sub { 
+   return partTransform($p,sub { 
       my(@p) = @_;
       return ($p[0]*$s->[0],$p[1]*$s->[1],$p[2]*$s->[2]);
    });
 }
 
-sub stlRotate {
+sub partRotate {
    my($p,$s) = @_;
    my(@r) = ($s->[0] * pi/180,$s->[1] * pi/180,$s->[2] * pi/180);
-   printf "rotate %.1f,%.1f,%.1f, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
-   print "rotate: @$s, " if($conf{verbose});
-   return stlTransform($p,sub { 
+   printf ", rotate %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", rotate: @$s" if($conf{verbose});
+   return partTransform($p,sub { 
       my(@p) = @_;
       my(@pn);
       # -- https://ch.mathworks.com/matlabcentral/answers/123763-how-to-rotate-entire-3d-data-with-x-y-z-values-along-a-particular-axis-say-x-axis
@@ -1141,24 +1282,36 @@ sub stlRotate {
    });
 }
 
-sub stlTranslate {
+sub partTranslate {
    my($p,$s) = @_;
-   printf "translate %.1f,%.1f,%.1f, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
-   print "translate: @$s, "; # if($conf{verbose});
-   return stlTransform($p,sub { 
+   printf ", translate %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", translate: @$s"; # if($conf{verbose});
+   return partTransform($p,sub { 
       my(@p) = @_;
       return ($p[0]+$s->[0],$p[1]+$s->[1],$p[2]+$s->[2]);
    });
 }
 
-sub stlMirror {
+sub partMirror {
    my($p,$s) = @_;
-   printf "mirror %d,%d,%d, ",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
-   print "mirror: @$s, " if($conf{verbose});
-   return stlTransform($p,sub { 
+   printf ", mirror %d,%d,%d",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", mirror: @$s" if($conf{verbose});
+   return partTransform($p,sub { 
       my(@p) = @_;
       return ($p[0]*($s->[0]?-1:1),$p[1]*($s->[1]?-1:1),$p[2]*($s->[2]?-1:1));
    });
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+
+sub fromJSON {
+   return eval { JSON->new->allow_nonref->relaxed([1])->decode($_[0]) };
+}
+
+sub toJSON {
+   my($v,$a) = @_;
+   my $j = JSON->new->allow_nonref->allow_blessed->canonical;
+   $j = $j->pretty unless($a&&!$a->{pretty});
+   return $j->encode($v);
+}
 

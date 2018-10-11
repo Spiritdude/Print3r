@@ -12,14 +12,17 @@ print3r print cube.scad
 ```
 
 ### Main Features
-- **print** `.scad`, `.stl` or `.gcode` to 3d printers
-- **slice** `.scad` or `.stl` saving `.gcode` without printing
+- **print** `.scad`, `.stl`\* or `.gcode` to 3d printers
+- **slice** `.scad` or `.stl`\* saving `.gcode` without printing
 - **preprocess parts** with `--scale=<x>,<y>,<z>`, `--rotate=<x>,<y>,<z>`, `--translate=<x>,<y>,<z>`, `--random-placement`, `--auto-center`, `--multiply-part=<n>`
 - **use Slic3r arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, `--skirts=<n>` etc.
 - **send Gcode** from command line arguments or console interactively
 - **render Gcode** (and .stl, .scad) into `.png` image
- 
+
+\*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
+
 ## Changelog
+- 0.0.9: preliminary `.amf` and `.obj` native support for preprocessing (scale,rotate,translate,mirror)
 - 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`, `--auto-center` to center print
 - 0.0.7: `PRINT3R` enviromental variable considered, `'baudrate=auto'` probes baudrate.
 - 0.0.6: publically released source on github
