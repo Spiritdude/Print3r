@@ -1,1 +1,1 @@
-cylinder(d=10,h=10);
+cylinder(d=10,h=10,$fn=1000);
