@@ -458,7 +458,7 @@ sub scadToSTL {
       exec(@a);
    }
    unless($conf{quiet}) {
-      if($conf{scadlib}) {
+      if($conf{scad}) {
          print "$me: scad to stl: '$fno'";
          print " with libraries: $conf{scadlib}" if($conf{scadlib});
       } else {
@@ -1114,7 +1114,11 @@ sub slicePart {
       #push(@a,"-p");    # -- progress
       push(@a,"-v");    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
-      push(@a,'-j',"settings/cura/fdmprinter.def.json");
+      my $cp;
+      foreach my $p (@paths) {
+         push(@a,'-j',"$p/cura/fdmprinter.def.json"), $cp = $p, last if(-e "$p/cura/fdmprinter.def.json");
+      }
+      print "$me: cura settings found in $cp/cura/\n" if($conf{verbose});
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
       #push(@a,'-j',$conf{printer}) if($conf{printer});
@@ -1122,7 +1126,7 @@ sub slicePart {
       #push(@a,"-e0");        # -- doesn't work, throws error
       push(@a,"-s","extruder_nr=0");
       my @ks;
-      if(open(my $fh,"<","settings/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+      if(open(my $fh,"<","$cp/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
          while(<$fh>) {
             chop; 
             if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
@@ -1132,6 +1136,8 @@ sub slicePart {
             }
          }
          close $fh;
+      } else {
+         print "$me: WARN: no base.ini found in @paths\n";
       }
       my $c;
       foreach my $k (sort keys %conf) {
