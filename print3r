@@ -121,7 +121,7 @@ if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer
    my %gc;
    foreach my $p (@paths) {
       foreach my $fn (
-         "$p/$conf{slicer}/base.ini",
+         "$p/slicer/$conf{slicer}/base.ini",
          ) {
          my $c = readSlicerConf($fn);
          foreach my $k (sort keys %$c) {
@@ -133,7 +133,7 @@ if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer
          #$conf{$k} = $gc{$k} unless(defined $conf{$k});
          $printer->{$k} = $gc{$k};
       }
-      $map = readSlicerConf("$p/$conf{slicer}/map.ini") if(-e "$p/$conf{slicer}/map.ini");
+      $map = readSlicerConf("$p/slicer/$conf{slicer}/map.ini") if(-e "$p/slicer/$conf{slicer}/map.ini");
    }
 }
 
@@ -141,7 +141,7 @@ if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer
 if($conf{printer}) {
    my $done;
    foreach my $p (@paths) {
-      foreach my $p2 (".",'printer',$conf{slicer}) {               # -- non-slicer and slicer-depending printer settings
+      foreach my $p2 (".",'printer',"slicer/$conf{slicer}") {               # -- non-slicer and slicer-depending printer settings
          print "$me: checking $p/$p2 for printer profile\n" if($conf{verbose});
          if(-e "$p/$p2/$conf{printer}.ini") {                # -- printer profile linked, extract useful information
             print "$me: consider <$p/$p2/$conf{printer}> printer profile\n" if($conf{verbose});
@@ -1002,7 +1002,7 @@ sub slicePart {
    
    my $cpath;           # -- find slicer base settings; cpath contains path
    foreach my $p (@paths) {
-      $cpath = $p, last if(-e "$p/$conf{slicer}/base.ini");
+      $cpath = $p, last if(-e "$p/slicer/$conf{slicer}/base.ini");
    }
    
    if($conf{slicer}=~/slic3r/) {                         # -- slic3r & slic3r-pe
@@ -1011,7 +1011,7 @@ sub slicePart {
          # -- note: slic3r and slic3r-pe won't support all settings coming from command line
          #        solution: we compose a temporary settings file which merges command line options
          my $tmp = "/tmp/print3r-$$-setting.ini";
-         my $c = readSlicerConf("$cpath/$conf{slicer}/base.ini");
+         my $c = readSlicerConf("$cpath/slicer/$conf{slicer}/base.ini");
 
          $c = remap($c);
          
@@ -1080,7 +1080,7 @@ sub slicePart {
    
    } elsif($conf{slicer}eq'cura-legacy') {    # -- cura-legacy
       push(@a,"-v");    # -- verbose
-      push(@a,'-c',"$cpath/cura-legacy/base.ini");
+      push(@a,'-c',"$cpath/slicer/cura-legacy/base.ini");
       if(0) {
          if($conf{random_placement}) {
             my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
@@ -1126,7 +1126,7 @@ sub slicePart {
       #push(@a,"-p");    # -- progress
       push(@a,"-v");    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
-      push(@a,'-j',"$cpath/cura/fdmprinter.def.json");
+      push(@a,'-j',"$cpath/slicer/cura/fdmprinter.def.json");
       print "$me: cura settings found in $cp/cura/\n" if($conf{verbose});
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
@@ -1135,7 +1135,7 @@ sub slicePart {
       #push(@a,"-e0");        # -- doesn't work, throws error
       push(@a,"-s","extruder_nr=0");
       my @ks;
-      if(open(my $fh,"<","$cpath/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+      if(open(my $fh,"<","$cpath/slicer/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
          while(<$fh>) {
             chop; 
             if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {

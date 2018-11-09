@@ -14,7 +14,7 @@ requirements::
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
 	mkdir -p ${HOME}/.config/print3r
-	cd settings; tar cf - printer/*.ini macro/*.ini filament/*.ini */base.ini */map.ini */*.def.json | (cd ${HOME}/.config/print3r/; tar xf -)
+	cd settings; tar cf - printer/*.ini macro/*.ini filament/*.ini slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json | (cd ${HOME}/.config/print3r/; tar xf -)
 
 deinstall::
 	sudo rm -f ${DEST_BIN}/${CMD}
@@ -23,7 +23,7 @@ deinstall::
 # -- developer(s) only:
 
 edit::
-	dee4 print3r Makefile README.md LICENSE settings/*.ini settings/*/*.ini gconsole/commands/*
+	dee4 print3r Makefile README.md LICENSE settings/*/*.ini gconsole/commands/*
 
 backup::
 	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz "--exclude=*/slicers/*" ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
