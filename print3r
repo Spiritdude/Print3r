@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
+# 2018/11/09: 0.1.6: 
 # 2018/11/08: 0.1.5: new option '--scad=<code>' to additionally execute openscad code
 # 2018/11/04: 0.1.4: various improvements, remap() of general settings to slice-specific settings via settings/<slicer>/map.ini
 # 2018/10/22: 0.1.1: better support for '--slicer=cura' and 'cura-legacy'
@@ -35,7 +36,7 @@ use File::Which;
 use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.1.5';
+my $VERSION = '0.1.6';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -140,7 +141,7 @@ if($conf{slicer}) {     # -- process settings/<slicer>/base.ini to $printer
 if($conf{printer}) {
    my $done;
    foreach my $p (@paths) {
-      foreach my $p2 (".",$conf{slicer}) {               # -- non-slicer and slicer-depending printer settings
+      foreach my $p2 (".",'printer',$conf{slicer}) {               # -- non-slicer and slicer-depending printer settings
          print "$me: checking $p/$p2 for printer profile\n" if($conf{verbose});
          if(-e "$p/$p2/$conf{printer}.ini") {                # -- printer profile linked, extract useful information
             print "$me: consider <$p/$p2/$conf{printer}> printer profile\n" if($conf{verbose});
@@ -170,17 +171,17 @@ if($conf{printer}) {
    }
 }
 
-# -- evaluate macros
+# -- evaluate macros (e.g. "@thin")
 my @a;
 foreach(@f) {
    if(/^@([\w\-\/]+)/) {         # -- evaluate macros
       my $m = $1;
       my $done;
       foreach my $d (@paths) {
-         if(-e "$d/$m.ini") {
-            print "evaluate macros $d/$m\n" if($conf{verbose});
-            push(@{$process->{macros}},"$d/$m");
-            open(my $fh,"<","$d/$m.ini");                # -- let's read in order (readSlicerConf() would work, but returns unordered structure)
+         if(-e "$d/macro/$m.ini") {
+            print "evaluate macros $d/macro/$m\n" if($conf{verbose});
+            push(@{$process->{macros}},"$d/macro/$m");
+            open(my $fh,"<","$d/macro/$m.ini");                # -- let's read in order (readSlicerConf() would work, but returns unordered structure)
             while(<$fh>) {
                chop;
                s/#.*$//;         # -- remove comments
@@ -225,15 +226,21 @@ if($conf{verbose}) {
 
 if($cmd eq 'analyze') {          # -- not yet
    foreach my $fn (@f) {
-      my $i;
-      if($fn =~ /\.stl$/i) {
-         $i = readSTL($fn);
-      } elsif($fn =~ /\.gcode$/i) {
-         $i = readGcode($fn);
+      if($fn=~/\.(\w+)$/ && $sliceExtSupported{lc($1)}) {
+         my $i = partRead($fn);
+         if($i) {
+            if($conf{verbose}) {
+               print toJSON($i);    # -- dump entire file
+            } else {
+               print "$fn:\n";
+               print "   size: ",toJSON($i->{size},{pretty=>0}),"\n";
+               print "   pos: ",toJSON($i->{min},{pretty=>0}),"\n";
+               print "   facets: ",scalar @{$i->{facets}},"\n";
+            }
+         }
       } else {
-         print "$me: WARN: file-format not supported: <$fn>, only .stl, .gcode\n";
+         print "$me: WARN: file-format not supported: <$fn>, only ",join(", ",sort keys %sliceExtSupported),"\n";
       }
-      print toJSON($i) if($i);
    }
 
 } elsif($cmd eq 'slice') {
@@ -286,7 +293,7 @@ if($cmd eq 'analyze') {          # -- not yet
             printGcode($fn,\%conf);
          }
       } else {
-         print "\n$me: WARN: can't print <$fn>, skipped.\n";
+         print "$me: WARN: file-format not supported: <$fn>, only scad, ",join(", ",sort keys %sliceExtSupported),", gcode\n";
       }
       $n++;
    }
@@ -363,6 +370,8 @@ if($cmd eq 'analyze') {          # -- not yet
       --printer=<name>        config of printer, default: $conf{printer}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
+      --scad                  consider all arguments as actual OpenSCAD code (not files)
+      --scadlib=<files>       define OpenSCAD files separated by \",\" or \":\"
       part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
@@ -375,25 +384,22 @@ if($cmd eq 'analyze') {          # -- not yet
          --<key>=<value>      include any valid slicer option (e.g. slic3r --help)
 
    commands:
-      slice <file.stl|amf..>  slice file to gcode (.stl, .amf, .obj, .3mf)
-         slice <file.scad>
-      print <file.gcode>      print gcode
-         print <file.stl>     slice & print in one go
-         print <file.scad>    convert, slice & print in one go
-      render <file.gcode>     render an image (use '--output=sample.png' or so)
-         render <file.stl>
-         render <file.scad>
+      print <file>            print (convert & slice & print) part (.scad, .stl, .obj, .gcode)
+      slice <file>            slice file to gcode (.scad, .stl, .amf, .obj, .3mf)
+      preview <file>          slice & preview (.scad, .stl, .obj, .gcode)
+      render <file>           render an image (use '--output=sample.png' or so)
       gcode <code1> [...]     send gcode lines
       gconsole                start gcode console
       help
    
    examples:
-      ln -s my_printer.ini default.ini --OR-- export PRINT3R \"printer=my_printer\"
+      export PRINT3R \"printer=my_printer\" --OR-- setenv PRINT3R \"printer=my_printer\"
       $me slice cube.stl
       $me --layer-height=0.2 --output=test.gcode slice cube.stl
       $me --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
       $me --printer=corexy --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
       $me print cube.scad
+      $me --scad print \"cube(20)\"
       $me gcode 'G28 X Y' 'G1 X60' 'G28 Z'
       $me gconsole
       == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
@@ -417,11 +423,12 @@ sub header {
       print "== $NAME $VERSION == https://github.com/Spiritdude/Print3r\n";
       print "$me: conf: device $conf{device}";
       print ", $conf{machine_name}" if($printer->{machine_name});
-      print ", build $printer->{build}->{x}x$printer->{build}->{y}x$printer->{build}->{z}mm";
+      print ", build/v $printer->{build}->{x}x$printer->{build}->{y}x$printer->{build}->{z}mm";
       print ", nozzle/d $printer->{nozzle_diameter}mm" if($printer->{nozzle_diameter});
       print ", layer/h $printer->{layer_height}mm" if($printer->{layer_height});
       print ", filament/d $printer->{filament_diameter}mm" if($printer->{filament_diameter});
       print "\n";
+      
    }
 }
 

@@ -14,7 +14,7 @@ requirements::
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
 	mkdir -p ${HOME}/.config/print3r
-	cd settings; tar cf - *.ini filament/*.ini */base.ini */map.ini */*.def.json | (cd ${HOME}/.config/print3r/; tar xf -)
+	cd settings; tar cf - printer/*.ini macro/*.ini filament/*.ini */base.ini */map.ini */*.def.json | (cd ${HOME}/.config/print3r/; tar xf -)
 
 deinstall::
 	sudo rm -f ${DEST_BIN}/${CMD}
