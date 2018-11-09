@@ -117,7 +117,7 @@ if($slicer2exe{$conf{slicer}}) {
    }
 }
    
-if($conf{slicer}) {     # -- process settings/<slicer>/base.ini to $printer
+if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer
    my %gc;
    foreach my $p (@paths) {
       foreach my $fn (
@@ -381,13 +381,13 @@ if($cmd eq 'analyze') {          # -- not yet
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
          --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
-         --<key>=<value>      include any valid slicer option (e.g. slic3r --help)
+      --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
 
    commands:
-      print <file>            print (convert & slice & print) part (.scad, .stl, .obj, .gcode)
-      slice <file>            slice file to gcode (.scad, .stl, .amf, .obj, .3mf)
-      preview <file>          slice & preview (.scad, .stl, .obj, .gcode)
-      render <file>           render an image (use '--output=sample.png' or so)
+      print <file> [...]      print (convert & slice & print) part(s) (.scad, .stl, .obj, .gcode)
+      slice <file> [...]      slice file(s) to gcode (.scad, .stl, .amf, .obj, .3mf)
+      preview <file> [...]    slice & preview (.scad, .stl, .obj, .gcode)
+      render <file> [...]     render an image (use '--output=sample.png' or so)
       gcode <code1> [...]     send gcode lines
       gconsole                start gcode console
       help
@@ -1000,13 +1000,18 @@ sub slicePart {
 
    my($exit,$out);
    
+   my $cpath;           # -- find slicer base settings; cpath contains path
+   foreach my $p (@paths) {
+      $cpath = $p, last if(-e "$p/$conf{slicer}/base.ini");
+   }
+   
    if($conf{slicer}=~/slic3r/) {                         # -- slic3r & slic3r-pe
       # -- compose argument list for slic3r
       if(1) {
          # -- note: slic3r and slic3r-pe won't support all settings coming from command line
          #        solution: we compose a temporary settings file which merges command line options
          my $tmp = "/tmp/print3r-$$-setting.ini";
-         my $c = readSlicerConf("settings/$conf{slicer}/base.ini");
+         my $c = readSlicerConf("$cpath/$conf{slicer}/base.ini");
 
          $c = remap($c);
          
@@ -1075,7 +1080,7 @@ sub slicePart {
    
    } elsif($conf{slicer}eq'cura-legacy') {    # -- cura-legacy
       push(@a,"-v");    # -- verbose
-      push(@a,'-c',"settings/cura-legacy/base.ini");
+      push(@a,'-c',"$cpath/cura-legacy/base.ini");
       if(0) {
          if($conf{random_placement}) {
             my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
@@ -1121,10 +1126,7 @@ sub slicePart {
       #push(@a,"-p");    # -- progress
       push(@a,"-v");    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
-      my $cp;
-      foreach my $p (@paths) {
-         push(@a,'-j',"$p/cura/fdmprinter.def.json"), $cp = $p, last if(-e "$p/cura/fdmprinter.def.json");
-      }
+      push(@a,'-j',"$cpath/cura/fdmprinter.def.json");
       print "$me: cura settings found in $cp/cura/\n" if($conf{verbose});
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
@@ -1133,7 +1135,7 @@ sub slicePart {
       #push(@a,"-e0");        # -- doesn't work, throws error
       push(@a,"-s","extruder_nr=0");
       my @ks;
-      if(open(my $fh,"<","$cp/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+      if(open(my $fh,"<","$cpath/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
          while(<$fh>) {
             chop; 
             if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
