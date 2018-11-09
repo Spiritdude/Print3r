@@ -11,7 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2018/11/09: 0.1.6: 
+# 2018/11/09: 0.1.6: restructure the file layout of settings (e.g. at ~/.config/print3r/) 
 # 2018/11/08: 0.1.5: new option '--scad=<code>' to additionally execute openscad code
 # 2018/11/04: 0.1.4: various improvements, remap() of general settings to slice-specific settings via settings/<slicer>/map.ini
 # 2018/10/22: 0.1.1: better support for '--slicer=cura' and 'cura-legacy'
@@ -1127,7 +1127,7 @@ sub slicePart {
       push(@a,"-v");    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
       push(@a,'-j',"$cpath/slicer/cura/fdmprinter.def.json");
-      print "$me: cura settings found in $cp/cura/\n" if($conf{verbose});
+      print "$me: cura settings found in $cpath/cura/\n" if($conf{verbose});
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
       #push(@a,'-j',$conf{printer}) if($conf{printer});
