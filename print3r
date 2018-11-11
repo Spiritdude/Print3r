@@ -146,15 +146,17 @@ if($conf{printer}) {
    #     2) consider 'default.ini' regardless for sane base **slice-indepdendent** settings
    #     3) gather printer specifics 
 
+   print "$me: combine printer profile:\n" if($conf{verbose});
+   
    foreach my $p (reverse @paths) {    # -- **commulative merge** of data /usr/share/print3r goes FIRST
 
       foreach my $p2 (".",'printer',"slicer/$conf{slicer}") {               # -- non-slicer and slicer-depending printer settings
 
-         print "$me: checking $p/$p2 for printer profile\n" if($conf{verbose});
+         print "$me: ... $p/$p2\n" if($conf{verbose});
 
          foreach my $pr ('default',$conf{printer}) {
             if(-e "$p/$p2/$pr.ini") {                # -- printer profile linked, extract useful information
-               print "$me: consider <$p/$p2/$pr> printer profile\n" if($conf{verbose});
+               print "$me: loading <$p/$p2/$pr> printer profile\n" if($conf{verbose});
                my $c = readSlicerConf("$p/$p2/$pr.ini");
 
                if($c->{machine_width} && $c->{machine_height} && $c->{machine_depth}) {
@@ -195,7 +197,7 @@ foreach(@f) {
       my $done;
       foreach my $d (@paths) {
          if(-e "$d/macro/$m.ini") {
-            print "evaluate macros $d/macro/$m\n" if($conf{verbose});
+            print "$me: eval macro $d/macro/$m\n" if($conf{verbose});
             push(@{$process->{macros}},"$d/macro/$m");
             open(my $fh,"<","$d/macro/$m.ini");                # -- let's read in order (readSlicerConf() would work, but returns unordered structure)
             while(<$fh>) {
@@ -358,11 +360,17 @@ if($cmd eq 'analyze') {          # -- not yet
 
    my $com = openSerial($conf{device});
 
+   my $cpath;           # -- find slicer base settings; cpath contains path
+   foreach my $p (reverse @paths) {
+      $cpath = $p, last if(-e "$p/gconsole");
+   }
+   print "$me: commands found at $cpath\n" if($conf{verbose} && $cpath);
+   
    print "connected\n";
    while(1) {
       print "> ";
       my $ln = readline(STDIN);
-      my($cmd,$v) = gconsole($ln,$com);
+      my($cmd,$v) = gconsole($ln,$com,$cpath);
       foreach my $l (split(/\n/,$cmd)) {
          print "send <$l>\n" if($v || $conf{verbose});
          printerSend($com,$l."\n");
@@ -1967,7 +1975,7 @@ sub evalExpr {
 # ---------------------------------------------------------------------------------------------------------------
 
 sub gconsole {
-   my($cmd,$com) = @_;
+   my($cmd,$com,$cpath) = @_;
 
    $cmd =~ s/^\s+//;
    $cmd =~ s/\s+$//;
@@ -1997,10 +2005,10 @@ sub gconsole {
       }
       return("",0);
       
-   } elsif(-e "gconsole/commands/$a[0]") {
+   } elsif(-e "$cpath/gconsole/commands/$a[0]") {
       my(@o);
       print "$me: execute command <$a[0]>\n" if($conf{verbose});
-      open(my $fh,"<","gconsole/commands/$a[0]");
+      open(my $fh,"<","$cpath/gconsole/commands/$a[0]");
       while(<$fh>) {
          chop;
          s/\$(\d+)/$a[$1]/g;
@@ -2034,6 +2042,8 @@ sub openSerial {
    if(!$done || $conf{serialif}eq'termios') {
       $com->close();
 
+      $conf{serialif} = 'termios';
+      
       print "$me: using termios interface to connect\n" if($conf{verbose});
       
       # -- Note: Device::SerialPort does NOT support arbitrary baudrates like default 250000 in Marlin, but 230400 or 115200
