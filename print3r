@@ -33,7 +33,7 @@ use Math::Trig ':pi';
 use JSON;                          
 use XML::Simple;                    # -- reading .amf (XML)
 use File::Which;
-use Algorithm::BinPack::2D;
+# use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
 my $VERSION = '0.1.6';
@@ -54,7 +54,7 @@ $conf{auto_center} = '\1';
 $conf{gviewer} = 'yagv';
 $conf{serialif} = 'serialport';
 
-my @paths = ('settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/usr/local/share/print3r");
+my @paths = ('./settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/usr/share/print3r");
 
 # -- short to long option mapping
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer');
@@ -140,32 +140,45 @@ if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer and fetch
 # -- process '--printer' setting
 if($conf{printer}) {
    my $done;
+
+   # -- complex strategy:
+   #     1) merge all data
+   #     2) consider 'default.ini' regardless for sane base **slice-indepdendent** settings
+   #     3) gather printer specifics 
+
    foreach my $p (reverse @paths) {    # -- **commulative merge** of data /usr/share/print3r goes FIRST
+
       foreach my $p2 (".",'printer',"slicer/$conf{slicer}") {               # -- non-slicer and slicer-depending printer settings
+
          print "$me: checking $p/$p2 for printer profile\n" if($conf{verbose});
-         if(-e "$p/$p2/$conf{printer}.ini") {                # -- printer profile linked, extract useful information
-            print "$me: consider <$p/$p2/$conf{printer}> printer profile\n" if($conf{verbose});
-            my $c = readSlicerConf("$p/$p2/$conf{printer}.ini");
-            if($c->{machine_width} && $c->{machine_height} && $c->{machine_depth}) {
-               ($printer->{build}->{x},$printer->{build}->{y},$printer->{build}->{z}) = ($c->{machine_width},$c->{machine_depth},$c->{machine_height});
-            } elsif($c->{bed_shape}) {
-               my(@co) = split(/,/,$c->{bed_shape});
-               ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$co[2]);
-            }
-            foreach my $k (sort keys %$c) {
-               # -- override conf but not if 'cli' defined it already
-               if(!defined $conf{$k} || !defined $conf_src{$k} || $conf_src{$k}eq'printer') {
-                  $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer';
+
+         foreach my $pr ('default',$conf{printer}) {
+            if(-e "$p/$p2/$pr.ini") {                # -- printer profile linked, extract useful information
+               print "$me: consider <$p/$p2/$pr> printer profile\n" if($conf{verbose});
+               my $c = readSlicerConf("$p/$p2/$pr.ini");
+
+               if($c->{machine_width} && $c->{machine_height} && $c->{machine_depth}) {
+                  ($printer->{build}->{x},$printer->{build}->{y},$printer->{build}->{z}) = ($c->{machine_width},$c->{machine_depth},$c->{machine_height});
+               } elsif($c->{bed_shape}) {
+                  my(@co) = split(/,/,$c->{bed_shape});
+                  ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$co[2]);
                }
+
+               foreach my $k (sort keys %$c) {        # -- merge data into conf
+                  # -- override conf but not if 'cli' defined it already
+                  if(!defined $conf{$k} || !defined $conf_src{$k} || $conf_src{$k}eq'printer') {
+                     $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer';
+                  }
+               }
+               foreach my $k (sort keys %conf) {     # -- transfer command-line args to slicer config
+                  next if($internOption{$k});
+                  $c->{$k} = $conf{$k};
+               }
+               foreach my $k (sort keys %$c) {       # -- transfer slicer config to printer settings (slicer independent - hopefully)
+                  $printer->{$k} = $c->{$k};
+               }
+               $done++ if($conf{printer}eq'default' || $pr ne 'default');  # -- if printer is defined, count only non-default entries
             }
-            foreach my $k (sort keys %conf) {     # -- transfer command-line args to slicer config
-               next if($internOption{$k});
-               $c->{$k} = $conf{$k};
-            }
-            foreach my $k (sort keys %$c) {       # -- transfer slicer config to printer settings (slicer independent - hopefully)
-               $printer->{$k} = $c->{$k};
-            }
-            $done++;
          }
       }
    }
@@ -221,10 +234,8 @@ my $cmd = shift(@f);
 my @f_in = @f;             # -- preserve original file list
 
 if($conf{verbose}) {
-   foreach my $k (sort keys %conf) {
-      print "$k = $conf{$k}\n";
-   }
-   print "files: @f\n";
+   print "$me: conf from command-line and macros: ".toJSON(\%conf);
+   print "$me: files: @f\n";
 }   
 
 if($cmd eq 'analyze') {          # -- not yet
@@ -2009,7 +2020,22 @@ sub openSerial {
    my($d) = @_;
    my $com;
 
-   if($conf{serialif}eq'termios') {
+   $com = Device::SerialPort->new($d || $conf{device}, 1);
+   error("can't open $conf{device}") if(!$com);
+
+   my $done;
+   foreach my $b ($com->baudrate) {       # -- we check availability of baudrate to set
+      if($b*1==$conf{baudrate}*1) {
+         $done++;
+         last;
+      }
+   }
+   
+   if(!$done || $conf{serialif}eq'termios') {
+      $com->close();
+
+      print "$me: using termios interface to connect\n" if($conf{verbose});
+      
       # -- Note: Device::SerialPort does NOT support arbitrary baudrates like default 250000 in Marlin, but 230400 or 115200
       #    as alternative IO::Termios and Linux::Termios2
       #       $com->read() works, but $com->status() doesn't exist
