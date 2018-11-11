@@ -2,6 +2,7 @@ NAME=Print3r
 VERSION=0.1.6
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/local/bin
+DEST_SHARE=/usr/share/
 CMD=print3r
 
 all::
@@ -13,8 +14,9 @@ requirements::
 
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
-	mkdir -p ${HOME}/.config/print3r
-	cd settings; tar cf - printer/*.ini macro/*.ini filament/*.ini slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json | (cd ${HOME}/.config/print3r/; tar xf -)
+	mkdir -p ${HOME}/.config/print3r; cd ${HOME}/.config/print3r; mkdir printer macro macro/filament slicer
+	sudo mkdir -p ${DEST_SHARE}/print3r
+	cd settings; tar cf - printer/*.ini macro/*.ini macro/filament/*.ini slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json | (cd ${DEST_SHARE}/print3r/; tar xf -)
 
 deinstall::
 	sudo rm -f ${DEST_BIN}/${CMD}

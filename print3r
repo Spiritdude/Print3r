@@ -117,7 +117,7 @@ if($slicer2exe{$conf{slicer}}) {
    }
 }
    
-if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer
+if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer and fetch map-data
    my %gc;
    foreach my $p (@paths) {
       foreach my $fn (
@@ -137,23 +137,26 @@ if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer
    }
 }
 
-# -- process --printer setting
+# -- process '--printer' setting
 if($conf{printer}) {
    my $done;
-   foreach my $p (@paths) {
+   foreach my $p (reverse @paths) {    # -- **commulative merge** of data /usr/share/print3r goes FIRST
       foreach my $p2 (".",'printer',"slicer/$conf{slicer}") {               # -- non-slicer and slicer-depending printer settings
          print "$me: checking $p/$p2 for printer profile\n" if($conf{verbose});
          if(-e "$p/$p2/$conf{printer}.ini") {                # -- printer profile linked, extract useful information
             print "$me: consider <$p/$p2/$conf{printer}> printer profile\n" if($conf{verbose});
             my $c = readSlicerConf("$p/$p2/$conf{printer}.ini");
-            if($c->{machine_width}) {
+            if($c->{machine_width} && $c->{machine_height} && $c->{machine_depth}) {
                ($printer->{build}->{x},$printer->{build}->{y},$printer->{build}->{z}) = ($c->{machine_width},$c->{machine_depth},$c->{machine_height});
             } elsif($c->{bed_shape}) {
                my(@co) = split(/,/,$c->{bed_shape});
                ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$co[2]);
             }
             foreach my $k (sort keys %$c) {
-               $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer' if(!defined $conf{$k} || !defined $conf_src{$k});  # -- override program defaults but not if 'cli' defined it already
+               # -- override conf but not if 'cli' defined it already
+               if(!defined $conf{$k} || !defined $conf_src{$k} || $conf_src{$k}eq'printer') {
+                  $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer';
+               }
             }
             foreach my $k (sort keys %conf) {     # -- transfer command-line args to slicer config
                next if($internOption{$k});
@@ -357,6 +360,9 @@ if($cmd eq 'analyze') {          # -- not yet
       }
    }
       
+} elsif($cmd eq 'client') {
+   # -- not yet
+   
 } else {
    print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
 
@@ -1004,6 +1010,10 @@ sub slicePart {
    foreach my $p (@paths) {
       $cpath = $p, last if(-e "$p/slicer/$conf{slicer}/base.ini");
    }
+
+   print "$me: main base settings found at [$cpath]/slicer/$conf{slicer}/base.ini\n" if($conf{verbose});
+   
+   print "$me: settings for slicing:\n".toJSON(\%conf)."\n" if($conf{verbose});
    
    if($conf{slicer}=~/slic3r/) {                         # -- slic3r & slic3r-pe
       # -- compose argument list for slic3r
@@ -1127,7 +1137,6 @@ sub slicePart {
       push(@a,"-v");    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
       push(@a,'-j',"$cpath/slicer/cura/fdmprinter.def.json");
-      print "$me: cura settings found in $cpath/cura/\n" if($conf{verbose});
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
       #push(@a,'-j',$conf{printer}) if($conf{printer});
