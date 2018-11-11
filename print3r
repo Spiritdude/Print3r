@@ -1374,14 +1374,17 @@ sub printerResponse {
    my $st = time();
    
    if($conf{serialif}eq'termios') {
+      my $ln = "";
       while(1) {
          my $rd;
 
-         if(read($com,$rd,3)) {
+         if(read($com,$rd,3)) {           # -- minimal read (e.g. "ok\n")
             print ">> '$rd'\n" if($conf{verbose}>2);
+
+            $ln .= $rd;
             $resp .= $rd;
-   
-            &{$arg->{callback}}($rd,$com,$cmd) if(defined $arg->{callback} && ref($arg->{callback})eq'CODE');
+
+            &{$arg->{callback}}($ln,$com,$cmd), $ln = '' if($ln =~ /\n/ && defined $arg->{callback} && ref($arg->{callback})eq'CODE');
    
             $arg->{timeout} = 0.5, next if($resp =~ /^start/i);
             
@@ -1389,7 +1392,7 @@ sub printerResponse {
                print "> '$resp'\n" if($conf{verbose}>2);
                last if($resp =~ /ok/i);
                sleep 0.005;
-            } else {
+            } elsif($resp=~/\n/) {
                last;
             }
    
