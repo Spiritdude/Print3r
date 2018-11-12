@@ -36,6 +36,7 @@ print3r print cube.scad
 - ~~slicer agnostic, e.g. support of CuraEngine (just the slicer)~~: done since 0.1.6 with `slic3r`, `slic3r-pe`, `cura-legacy` and `cura`
 - network connectivity, distributed printing via tcp/ip
 - ~~preview gcode in OpenGL/WebGL zoomable views~~: done with 0.1.6 via external `yagv` viewer
+- multiple extruder support (preferably slicer-independent)
 
 ## Platform
 Primary focus in on **Linux** (Debian, Ubuntu) and alike platforms like FreeBSD and such.
