@@ -2,7 +2,7 @@
 
 ## Introduction
 
-**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing **Slic3r** as slicer (other slicer support planned).
+**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slice of your choice (Slic3r, Slic3r PE, CuraEngine, CuraEngine-Legacy).
 
 ### Examples
 ```
@@ -15,13 +15,18 @@ print3r print cube.scad
 - **print** `.scad`, `.stl`\* or `.gcode` to 3d printers
 - **slice** `.scad` or `.stl`\* saving `.gcode` without printing
 - **preprocess parts** with `--scale=<x>,<y>,<z>`, `--rotate=<x>,<y>,<z>`, `--translate=<x>,<y>,<z>`, `--random-placement`, `--auto-center`, `--multiply-part=<n>`
-- **use Slic3r arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, `--skirts=<n>` etc.
+- **use slicer-independent arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, etc.
 - **send Gcode** from command line arguments or console interactively
 - **render Gcode** and sliced .stl, .scad into `.png` image
 
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r & ~/.config/print3r/) 
+- 0.1.5: new option '--scad=<code>' to additionally execute openscad code
+- 0.1.4: various improvements, remap() of general settings to slice-specific settings via settings/<slicer>/map.ini
+- 0.1.1: better support for '--slicer=cura' and 'cura-legacy'
+- 0.1.0: '--slicer=<slicer>' with '--printer=<profile>' leads to settings/<slicer>/<profile>, '@<setting>' leads to 'settings/<setting>'
 - 0.0.9: preliminary `.amf` and `.obj` native support for preprocessing (scale,rotate,translate,mirror)
 - 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`, `--auto-center` to center print
 - 0.0.7: `PRINT3R` enviromental variable considered, `'baudrate=auto'` probes baudrate.
@@ -38,6 +43,10 @@ Primary focus in on **Linux** (Debian, Ubuntu) and alike platforms like FreeBSD 
 ## Requirements
 - install `openscad`, see [OpenSCAD.org](http://www.openscad.org/)
 - install `slic3r`, Debian/Ubuntu: `apt install slic3r`
+- optional:
+  - recommended: [install Slic3r PE](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Slic3r-&-Slic3r-PE)
+  - recommended: [install CuraEngine](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Cura)
+  - [install CuraEngine Legacy](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Cura-Legacy)
 - run `make requirements` to install required Perl modules & Perl GD.pm with libgd
 
 ## License
@@ -50,67 +59,14 @@ make install
 ```
 
 ### Printer Configurations
-In order to use slicing and printing command `print3r` requires Slic3r printer configuration:
-- run `slic3r` GUI and configure your printer(s) using the wizard
-- export the configuration (e.g. `my_printer.ini`)
-- reference it with `--printer=my_printer.ini` or rename it as `default.ini` or reference it in `PRINT3R` environment variable `export PRINT3R "printer=my_printer.ini:..."`
+See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how to setup a dedicated printer profile.
 
 ## Usage
 ```
-Print3r (print3r) 0.0.9 USAGE: [<options>] <cmd> <file1> [<...>]
-
-   options:
-      --verbose or -v or -vv  increase verbosity
-      --quiet or -q           no output except fatal errors
-      --baudrate=<n>          set baudrate, default: 115200
-      --device=<d>            set device, default: /dev/ttyUSB0
-      --printer=<config.ini>  slic3r config of printer, default: default.ini
-      --version               display version and exit
-      --output=<file>         define output file for 'slice' and 'render' command
-      part preprocessing:
-         --random-placement   place print randomly on the bed
-         --auto-center        place print in the center
-         --multiply-part=<n>  multiply part(s)
-         --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
-         --scale=<f>             scale part f,f,f
-         --rotate=<x>,<y>,<z>    rotate x,y,z
-         --translate=<x>,<y>,<z> translate x,y,z
-         --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
-         --<key>=<value>      include any valid slic3r option (slic3r --help)
-
-   commands:
-      slice <file.stl|amf..>  slice file to gcode (.stl, .amf, .obj, .3mf)
-         slice <file.scad>
-      print <file.gcode>      print gcode
-         print <file.stl>     slice & print in one go
-         print <file.scad>    convert, slice & print in one go
-      render <file.gcode>     render an image (use '--output=sample.png' or so)
-         render <file.stl>
-         render <file.scad>
-      gcode <code1> [...]     send gcode lines
-      gconsole                start gcode console
-      help
-   
-   examples:
-      ln -s my_printer.ini default.ini --OR-- export PRINT3R "printer=my_printer.ini"
-      print3r slice cube.stl
-      print3r --layer-height=0.2 --output=test.gcode slice cube.stl
-      print3r --printer=ender3.ini --device=/dev/ttyUSB1 print test.gcode
-      print3r --printer=corexy.ini --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
-      print3r print cube.scad
-      print3r gcode 'G28 X Y' 'G1 X60' 'G28 Z'
-      print3r gconsole
-      == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
-         for valid Gcode see https://reprap.org/wiki/G-code
-         conf: device /dev/ttyUSB0, connected
-      > M115
-      ...
-
 ```
 
 ## More Examples
 ```
-ln -s prusa-i3.ini default.ini
 print3r --fill-density=0 --layer-height=0.2 print cube.scad
 print3r --print-center=100,100 print cube.scad
 print3r --printer=ender3.ini --device=/dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
@@ -124,22 +80,6 @@ print3r --scale=1,4,0.5 print cube.scad
 print3r --scale=30% print cube.scad
 print3r --scale=50mm print cube.scad
 print3r --scale=0,0,30mm print 3DBenchy.stl
-```
-
-## Printer Profiles
-
-There are multiple ways to reference a particular printer profile:
-
-### Command Line `--printer`
-```
-print3r --printer=prusa-i3.ini print Parts/3DBenchy.stl
-```
-
-### Default Profile `default.ini`
-If `default.ini` exists, it's considered by default:
-```
-ln -s prusa-i3.ini default.ini
-print3r print cube.scad
 ```
 
 ### Environment Variable `PRINT3R`
@@ -157,5 +97,6 @@ print3r --output=benchy.png render 3DBenchy.stl
 ![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/examples/benchy.png)
 
 ## See Also
+- [Print3r Github Wiki](https://github.com/Spiritdude/Print3r/wiki)
 - [Spiritdude's Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)
 

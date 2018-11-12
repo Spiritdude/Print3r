@@ -10,7 +10,7 @@ all::
 	@echo "make requirements install deinstall"
 
 requirements::
-	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON Algorithm::BinPack::2D
+	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Linux::Termios2 Algorithm::BinPack::2D
 	sudo apt install libgd-perl yagv
 
 install::
