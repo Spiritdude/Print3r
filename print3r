@@ -210,7 +210,7 @@ foreach(@f) {
                   my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
                   $conf{$k_} = '\1', $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');   # -- cli options superceed macros
                   next;
-               } elsif(/^([\w\-]+)\s*=\s*(\S.*)\s*$/) {
+               } elsif(/^([\w\-]+)\s*=\s*"([^"]+)"/||/^([\w\-]+)\s*=\s*(\S.*)\s*$/) {
                   $k = $1, $v = $2, $k =~ s/\-/_/g, $v = evalExpr($v);         # -- options in macro _ => -
                   my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
                   $printer->{$k_} = $conf{$k_} = $v, $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');  # -- cli options superceed macros
@@ -525,7 +525,7 @@ sub readSlicerConf {
          s/\s*$//;      # -- remove trailing spaces
          next if(/^\s*#/||/^\s*$/);
          my($k,$v);
-         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*"([^"]*)"/);        # -- cura-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*"([^"]*)"/);  # -- cura-like
          ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*(\S.*)$/);    # -- slicer-like
          $n++;
       }
