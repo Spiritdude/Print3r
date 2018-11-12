@@ -521,12 +521,12 @@ sub readSlicerConf {
             return fromJSON($_);
          }
          chop;
-         s/#.*$//;      # -- remove comments
+         s/^\s*#.*$//;      # -- remove comments
          s/\s*$//;      # -- remove trailing spaces
          next if(/^\s*#/||/^\s*$/);
          my($k,$v);
          ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*"([^"]*)"/);  # -- cura-like
-         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*(\S.*)$/);    # -- slicer-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $v =~ s/#.*$//, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*(\S.*)$/);    # -- slicer-like
          $n++;
       }
       close $fh;
