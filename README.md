@@ -22,11 +22,11 @@ print3r print cube.scad
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
-- 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r & ~/.config/print3r/) 
-- 0.1.5: new option '--scad=<code>' to additionally execute openscad code
-- 0.1.4: various improvements, remap() of general settings to slice-specific settings via settings/<slicer>/map.ini
-- 0.1.1: better support for '--slicer=cura' and 'cura-legacy'
-- 0.1.0: '--slicer=<slicer>' with '--printer=<profile>' leads to settings/<slicer>/<profile>, '@<setting>' leads to 'settings/<setting>'
+- 0.1.6: restructure the file layout of settings (e.g. at `/usr/share/print3r` & `~/.config/print3r/`) 
+- 0.1.5: new option `--scad=<code>` to additionally execute openscad code
+- 0.1.4: various improvements, remap() of general settings to slice-specific settings via `.../<slicer>/map.ini`
+- 0.1.1: better support for `--slicer=cura` and `cura-legacy`
+- 0.1.0: `--slicer=<slicer>` with `--printer=<profile>` leads to `../<slicer>/<profile>`, `@<setting>` leads to `settings/macro/<setting>`
 - 0.0.9: preliminary `.amf` and `.obj` native support for preprocessing (scale,rotate,translate,mirror)
 - 0.0.8: absolute scaling like `--scale=0,0,30mm` or `--scale=50mm`, and `--scale=50%` same as `--scale=0.5`, `--auto-center` to center print
 - 0.0.7: `PRINT3R` enviromental variable considered, `'baudrate=auto'` probes baudrate.
