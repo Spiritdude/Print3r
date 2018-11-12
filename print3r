@@ -1242,10 +1242,15 @@ sub printGcode {
    my $cur_e = 0;
    my $layer = 0;
 
+   my $cpath;           # -- find slicer base settings; cpath contains path
+   foreach my $p (@paths) {
+      $cpath = $p, last if(-e "$p/gcode");
+   }
+
    $SIG{INT} = sub {
       print "\n\taborting print (max $conf{timeout}s) ...\n";
       sleep 1;
-      open(my $fh,"<","gcode/abort.gcode");
+      open(my $fh,"<","$cpath/gcode/abort.gcode");
       while(<$fh>) {
          my $abort;
          

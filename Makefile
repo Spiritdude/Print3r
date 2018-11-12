@@ -15,9 +15,9 @@ requirements::
 
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
-	mkdir -p ${HOME}/.config/${NICK}; cd ${HOME}/.config/${NICK}; mkdir -p printer macro macro/filament slicer gconsole gconsole/commands
+	mkdir -p ${HOME}/.config/${NICK}; cd ${HOME}/.config/${NICK}; mkdir -p printer macro macro/filament slicer gconsole gconsole/commands gcode
 	sudo mkdir -p ${DEST_SHARE}/${NICK}
-	cd settings; tar cf - printer/*.ini macro/*.ini macro/filament/*.ini slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json gconsole | (cd ${DEST_SHARE}/${NICK}/; sudo tar xf -)
+	cd settings; tar cf - printer/*.ini macro/*.ini macro/filament/*.ini slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json gconsole gcode | (cd ${DEST_SHARE}/${NICK}/; sudo tar xf -)
 
 deinstall::
 	sudo rm -f ${DEST_BIN}/${CMD}
