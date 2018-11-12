@@ -33,9 +33,9 @@ print3r print cube.scad
 - 0.0.6: publically released source on github
 
 ### To Do / Planned
-- -slicer agnostic, e.g. support of CuraEngine (just the slicer)-, done since 0.1.6 with `slic3r`, `slic3r-pe`, `cura-legacy` and `cura`
+- ~~slicer agnostic, e.g. support of CuraEngine (just the slicer)~~: done since 0.1.6 with `slic3r`, `slic3r-pe`, `cura-legacy` and `cura`
 - network connectivity, distributed printing via tcp/ip
-- -preview gcode in OpenGL/WebGL zoomable views-: done with 0.1.6 via external `yagv` viewer
+- ~~preview gcode in OpenGL/WebGL zoomable views~~: done with 0.1.6 via external `yagv` viewer
 
 ## Platform
 Primary focus in on **Linux** (Debian, Ubuntu) and alike platforms like FreeBSD and such.
@@ -63,6 +63,56 @@ See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how
 
 ## Usage
 ```
+Print3r (print3r) 0.1.6 USAGE: [<options>] <cmd> <file1> [<...>]
+
+   options:
+      --verbose or -v or -vv  increase verbosity
+      --quiet or -q           no output except fatal errors
+      --baudrate=<n>          set baudrate, default: 115200
+      --device=<d>            set device, default: /dev/ttyUSB0
+      --slicer=<slicer>       set slicer, default: slic3r
+                                 slic3r, slic3r-pe, cura-legacy, cura
+      --printer=<name>        config of printer, default: default
+      --version               display version and exit
+      --output=<file>         define output file for 'slice' and 'render' command
+      --scad                  consider all arguments as actual OpenSCAD code (not files)
+      --scadlib=<files>       define OpenSCAD files separated by "," or ":"
+      part preprocessing:
+         --random-placement   place print randomly on the bed
+         --auto-center        place print in the center
+         --multiply-part=<n>  multiply part(s)
+         --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
+         --scale=<f>             scale part f,f,f
+         --rotate=<x>,<y>,<z>    rotate x,y,z
+         --translate=<x>,<y>,<z> translate x,y,z
+         --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
+      --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
+
+   commands:
+      print <file> [...]      print (convert & slice & print) part(s) (.scad, .stl, .obj, .gcode)
+      slice <file> [...]      slice file(s) to gcode (.scad, .stl, .amf, .obj, .3mf)
+      preview <file> [...]    slice & preview (.scad, .stl, .obj, .gcode)
+      render <file> [...]     render an image (use '--output=sample.png' or so)
+      gcode <code1> [...]     send gcode lines
+      gconsole                start gcode console
+      help
+
+   examples:
+      export PRINT3R "printer=my_printer" --OR-- setenv PRINT3R "printer=my_printer"
+      print3r slice cube.stl
+      print3r --layer-height=0.2 --output=test.gcode slice cube.stl
+      print3r --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
+      print3r --printer=corexy --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      print3r print cube.scad
+      print3r --scad print "cube(20)"
+      print3r gcode 'G28 X Y' 'G1 X60' 'G28 Z'
+      print3r gconsole
+      == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
+         for valid Gcode see https://reprap.org/wiki/G-code
+         conf: device /dev/ttyUSB0, connected
+      > M115
+      ...
+
 ```
 
 ## More Examples
