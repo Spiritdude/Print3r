@@ -33,9 +33,9 @@ print3r print cube.scad
 - 0.0.6: publically released source on github
 
 ### To Do / Planned
-- slicer agnostic, e.g. support of CuraEngine (just the slicer)
+- -slicer agnostic, e.g. support of CuraEngine (just the slicer)-, done since 0.1.6 with `slic3r`, `slic3r-pe`, `cura-legacy` and `cura`
 - network connectivity, distributed printing via tcp/ip
-- preview gcode in OpenGL/WebGL zoomable views
+- -preview gcode in OpenGL/WebGL zoomable views-: done with 0.1.6 via external `yagv` viewer
 
 ## Platform
 Primary focus in on **Linux** (Debian, Ubuntu) and alike platforms like FreeBSD and such.
