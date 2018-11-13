@@ -1133,7 +1133,7 @@ sub slicePart {
          $c->{$k} = $conf{$k};         # -- just copy
       }
       $c = remap($c);
-      # -- manually add setting temperatures so we don't have to in start/end_gcode to say flexible
+      # -- manually add setting temperatures so we don't have to in start/end_gcode to stay flexible
       $c->{startCode} = "; $NAME $VERSION\nG90\n".$c->{startCode};
       $c->{startCode} .= "M109 S$c->{temperature}\n" if($c->{temperature});
       $c->{startCode} .= "M140 S$c->{bed_temperature}\n" if($c->{bed_temperature});
