@@ -1012,7 +1012,7 @@ sub slicePart {
          } else {
             ($x,$y) = ($printer->{build}->{x}/2,$printer->{build}->{y}/2);
          }
-         $x -= $printer->{build}->{x}/2, $y -= $printer->{build}->{y}/2 if($conf{slicer}eq'cura');    # -- cura assumes 0,0 at center of plate
+         $x -= $printer->{build}->{x}/2, $y -= $printer->{build}->{y}/2 if($conf{slicer}=~/cura/);    # -- cura assumes 0,0 at center of plate
          $p = partTranslate($p,[int($x),int($y),0]);
          my $tmp = "/tmp/print3r-$$-1-$n.stl";
          partWrite($tmp,$p);
