@@ -264,7 +264,7 @@ if($cmd eq 'analyze') {          # -- not yet
    my(@rm);
    foreach my $fn (@f) {
       $conf{output} = $fn, $conf{output} =~ s/\.[^\/\.]$/.gcode/ if(!defined $conf{output});
-      if($fn=~/\.scad$/i) {
+      if($fn=~/\.scad$/i || $conf{scad}) {
          my $c_fn = $conf{output};
          $conf{output} = "/tmp/print3r-$$.stl";
          scadToSTL($fn,\%conf);
@@ -499,7 +499,7 @@ sub scadToSTL {
    }
    wait();
    if($?) {
-      print "openscad: ERROR (bad options/arguments?)\n";
+      print "\n$me: openscad: ERROR (bad options/arguments?)\n";
    } else {
       print ", done.\n" unless($conf{quiet});
    }
@@ -633,7 +633,7 @@ sub renderSTL {
    wait();
    unlink $tmp;
    if($?) {
-      print "openscad: ERROR (bad options/arguments?)\n";
+      print "\n$me: openscad: ERROR (bad options/arguments?)\n";
    } else {
       print "done.\n" unless($conf{quiet});
    }
@@ -1109,7 +1109,7 @@ sub slicePart {
    
    } elsif($conf{slicer}eq'cura-legacy') {    # -- cura-legacy
       push(@a,"-v");    # -- verbose
-      push(@a,'-c',"$cpath/slicer/cura-legacy/base.ini");
+      #push(@a,'-c',"$cpath/slicer/cura-legacy/base.ini");
       if(0) {
          if($conf{random_placement}) {
             my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
@@ -1127,9 +1127,19 @@ sub slicePart {
          push(@a,'-o',$tmp);
          push(@rm,$tmp);
       }
+      my $c;
       foreach my $k (sort keys %conf) {
          next if($internOption{$k});
-         push(@a,"-s","$k=$conf{$k}");
+         $c->{$k} = $conf{$k};         # -- just copy
+      }
+      $c = remap($c);
+      # -- manually add setting temperatures so we don't have to in start/end_gcode to say flexible
+      $c->{startCode} = "; $NAME $VERSION\nG90\n".$c->{startCode};
+      $c->{startCode} .= "M109 S$c->{temperature}\n" if($c->{temperature});
+      $c->{startCode} .= "M140 S$c->{bed_temperature}\n" if($c->{bed_temperature});
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+         push(@a,"-s","$k=$v");
       }
       if($conf{multiply_part}>1) {
          foreach(1..$conf{multiply_part}) {
@@ -1148,7 +1158,7 @@ sub slicePart {
       }
       print ", slice" unless($conf{quiet});
       print ", exec: @a\n" if($conf{verbose});
-      ($exit,$out) = execProgram(@a);
+      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});
 
    } else {                               # -- cura
       push(@a,"slice");
