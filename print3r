@@ -1217,8 +1217,10 @@ sub slicePart {
      
    $process->{time}->{slice} = time()-$st;
 
-   if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {
+   if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura & slic3r
       $process->{filament_used} = $2 * ($3 eq 'm' ? 1000:1);               # -- filament_used [mm] always
+   } elsif($out=~/Filament:\s*([\d\.]+)/i) {       # -- cura-legacy
+      $process->{filament_used} = $1;
    }
    
    if($exit) {
