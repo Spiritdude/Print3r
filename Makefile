@@ -26,7 +26,7 @@ deinstall::
 # -- developer(s) only:
 
 edit::
-	dee4 print3r Makefile README.md LICENSE settings/*/*.ini gconsole/commands/*
+	dee4 print3r Makefile README.md LICENSE settings/*/*.ini settings/gconsole/commands/*
 
 backup::
 	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz "--exclude=*/slicers/*" ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
