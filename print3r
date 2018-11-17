@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
+# 2018/11/17: 0.1.7: more slicer-independent speed settings (print/travel/infill/perimeter/small_perimeter/bridge/retract_speed)
 # 2018/11/09: 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r/ & ~/.config/print3r/) 
 # 2018/11/08: 0.1.5: new option '--scad=<code>' to additionally execute openscad code
 # 2018/11/04: 0.1.4: various improvements, remap() of general settings to slice-specific settings via settings/<slicer>/map.ini
@@ -36,7 +37,7 @@ use File::Which;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.1.6';
+my $VERSION = '0.1.7';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
