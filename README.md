@@ -137,7 +137,7 @@ print3r --scale=0,0,30mm print 3DBenchy.stl
 ### Environment Variable `PRINT3R`
 You can set any option into PRINT3R environment variable, "&lt;key&gt;=&lt;value&gt;", combined with ":", like:
 ```
-export PRINT3R "printer=prusa-i3.ini:temperature=190:..."
+export PRINT3R "printer=prusa-i3:temperature=190:..."
 print3r print cube.scad
 ```
 
@@ -149,6 +149,6 @@ print3r --output=benchy.png render 3DBenchy.stl
 ![](https://raw.githubusercontent.com/Spiritdude/Print3r/master/examples/benchy.png)
 
 ## See Also
-- [Print3r Github Wiki](https://github.com/Spiritdude/Print3r/wiki)
+- **[Print3r Wiki](https://github.com/Spiritdude/Print3r/wiki)**, detailed documentation
 - [Spiritdude's Public Notebook: Print3r](https://spiritdude.wordpress.com/tag/print3r/)
 
