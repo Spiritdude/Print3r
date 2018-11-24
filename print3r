@@ -1281,7 +1281,7 @@ sub printGcode {
          }
       }
       if(!$done) {
-         print "\n$me: WARN: $cpath/gcode/abort.gcode not found\n";
+         print "\n$me: WARN: .../gcode/abort.gcode not found\n";
       }
       exit -1;
    };
