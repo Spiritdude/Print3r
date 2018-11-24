@@ -1263,17 +1263,26 @@ sub printGcode {
    $SIG{INT} = sub {
       print "\n\taborting print (max $conf{timeout}s) ...\n";
       sleep 1;
-      open(my $fh,"<","$cpath/gcode/abort.gcode");
-      while(<$fh>) {
-         my $abort;
-         
-         next if(/^\s*;/);
-         printerSend($com,$_);
-
-         my($resp) = printerResponse($com,$_,{timeout=>$conf{timeout}});
-         last if($resp eq 'abort');
+      my $done;
+      foreach my $p (reverse @paths) {
+         if(open(my $fh,"<","$p/gcode/abort.gcode")) {
+            while(<$fh>) {
+               my $abort;
+               
+               next if(/^\s*;/);
+               printerSend($com,$_);
+      
+               my($resp) = printerResponse($com,$_,{timeout=>$conf{timeout}});
+               last if($resp eq 'abort');
+            }
+            close($fh);
+            $done++;
+            last;
+         }
       }
-      close($fh);
+      if(!$done) {
+         print "\n$me: WARN: $cpath/gcode/abort.gcode not found\n";
+      }
       exit -1;
    };
 
