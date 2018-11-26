@@ -22,6 +22,7 @@ print3r print cube.scad
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
 - 0.1.7: more slicer-independent speed settings (`print/travel/infill/perimeter/small_perimeter/bridge/retract_speed`)
 - 0.1.6: restructure the file layout of settings (e.g. at `/usr/share/print3r` & `~/.config/print3r/`) 
 - 0.1.5: new option `--scad=<code>` to additionally execute openscad code
