@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
+# 2018/11/26: 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
 # 2018/11/17: 0.1.7: more slicer-independent speed settings (print/travel/infill/perimeter/small_perimeter/bridge/retract_speed)
 # 2018/11/09: 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r/ & ~/.config/print3r/) 
 # 2018/11/08: 0.1.5: new option '--scad=<code>' to additionally execute openscad code
@@ -37,12 +38,13 @@ use File::Which;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.1.7';
+my $VERSION = '0.1.8';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
 my $process;         # -- metadata of the process/task itself (e.g. elapsed time per stage)
 my @f;
+my @rm;
 
 my($me) = ($0=~/\/([^\/]+)$/);
 
@@ -104,7 +106,6 @@ if($conf{version}) {
 }
 
 $| = 1;
-
 
 $process->{version} = "$NAME $VERSION";
 
@@ -241,6 +242,11 @@ if($conf{verbose}) {
    print "$me: files: @f\n";
 }   
 
+$SIG{INT} = sub {
+   cleanup();
+   exit -1;
+};
+
 if($cmd eq 'analyze') {          # -- not yet
    foreach my $fn (@f) {
       if($fn=~/\.(\w+)$/ && $sliceExtSupported{lc($1)}) {
@@ -262,7 +268,6 @@ if($cmd eq 'analyze') {          # -- not yet
 
 } elsif($cmd eq 'slice') {
    header();
-   my(@rm);
    foreach my $fn (@f) {
       $conf{output} = $fn, $conf{output} =~ s/\.[^\/\.]$/.gcode/ if(!defined $conf{output});
       if($fn=~/\.scad$/i || $conf{scad}) {
@@ -275,11 +280,9 @@ if($cmd eq 'analyze') {          # -- not yet
       }
       slicePart($fn,\%conf);
    }
-   unlink @rm if(@rm);
    
 } elsif($cmd eq 'print' || $cmd eq 'render' || $cmd eq 'preview') {
    header();
-   my(@rm);
    my(@fx);
    my $o = $conf{output};     # -- preserve original setting
    
@@ -336,7 +339,6 @@ if($cmd eq 'analyze') {          # -- not yet
          printGcode($fn,\%conf);
       }
    }
-   unlink @rm if(@rm);
    
 } elsif($cmd eq 'gcode') {
    my $tmp = "/tmp/print3r-$$.gcode";
@@ -437,10 +439,13 @@ if($cmd eq 'analyze') {          # -- not yet
 ";
 }   
 
+cleanup();
+
 # ---------------------------------------------------------------------------------------------------------------
 
 sub error {
    print STDERR "\n$me: ERROR: $_[0]\n";
+   cleanup();
    exit -1;
 }
 
@@ -458,13 +463,18 @@ sub header {
    }
 }
 
+sub cleanup {
+   print "$me: cleanup\n";
+   unlink @rm if(@rm);
+   @rm = ();
+}
+
 # ---------------------------------------------------------------------------------------------------------------
 
 sub scadToSTL {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
    my $fno;
-   my @rm;
    
    if($conf{scad}) {       # -- any code to execute as well? $fn isn't a filename but code itself
       my $tmp = "/tmp/$me-$$-exec.scad";
@@ -504,7 +514,6 @@ sub scadToSTL {
    } else {
       print ", done.\n" unless($conf{quiet});
    }
-   unlink @rm if(@rm);
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -926,7 +935,6 @@ sub slicePart {
       return;
    }
    my $tmp = "/tmp/print3r-$$.gcode";
-   my @rm;
    
    my @a = ($slicer2exe{$conf{slicer}});
 
@@ -1233,7 +1241,6 @@ sub slicePart {
    }
    printf ", filament usage %.2fm",$process->{filament_used}/1000 if($process->{filament_used} && !$conf{quiet});
    print ", done.\n" unless($conf{quiet});
-   unlink @rm if(@rm);
 }
 
 sub printGcode {
@@ -1283,6 +1290,7 @@ sub printGcode {
       if(!$done) {
          print "\n$me: WARN: .../gcode/abort.gcode not found\n";
       }
+      cleanup();
       exit -1;
    };
 
@@ -1649,7 +1657,115 @@ sub readAMF {
 }
 
 sub read3MF {
-   # -- supporting .3mf files (zip-file with multiple files)
+   # -- supporting .3mf files (zip-file with multiple files) - not yet fully functional
+   my($fn) = @_;
+   my $p = { };
+   print ", 3mf read <$fn>\n" if($conf{verbose});
+
+   my $err;
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+
+   require Archive::Zip;
+   require XML::Simple;
+   # require HTML::TreeBuilder::XPath;  -- fails on me
+   my $mr = sub {
+      my ($r_mat)  = @_;
+      my $num_rows = @$r_mat;
+      my $num_cols = @{$r_mat->[0]};
+      ($num_rows, $num_cols); 
+   };
+   my $mm = sub {
+      my ($r_mat1, $r_mat2) = @_;
+      my ($r_product);
+      my ($r1, $c1) = &$mr ($r_mat1);
+      my ($r2, $c2) = &$mr ($r_mat2);
+      die "Matrix 1 has $c1 columns and matrix 2 has $r2 rows." . " Cannot multiply\n" unless ($c1 == $r2);
+      for (my $i = 0; $i < $r1; $i++) {
+         for (my $j = 0; $j < $c2; $j++) {
+            my $sum = 0;
+            for (my $k = 0; $k < $c1; $k++) {
+               $sum += $r_mat1->[$i][$k] * $r_mat2->[$k][$j];
+            }
+            $r_product->[$i][$j] = $sum; 
+         }
+      }
+      $r_product;
+   };
+   my $zip = Archive::Zip->new($fn);
+   if($zip) {
+      my $m = $zip->memberNamed('3D/3dmodel.model');
+      if($m && length($m->contents)) {
+         if(0) {
+            my $xml = HTML::TreeBuilder::XPath->new;
+            my $c = $xml->parse(scalar $m->contents);
+            if($c) {
+               my @bs = $c->look_down('_tag','build');
+               my @os = $c->look_down('_tag','object');
+               if(@os<1) {
+                  error("$fn: internal structure mismatch, no objects found");
+               }
+               if(@bs<1) {
+                  error("$fn: internal structure mismatch, no build section found");
+               }
+               foreach my $b ($bs[0]->look_down('_tag','item')) {
+                  my $o = $os[$b->attr('objectid')-1];
+                  print "objectid: ",$b->attr('objectid'),"\n";
+                  print toJSON($o);
+                  foreach my $m ($o->look_down('_tag','mesh')) {
+                     my @co;                                          
+                     foreach my $v ($m->look_down('_tag','vertices')) {
+                        push(@co,[$v->{x},$v->{y},$v->{z}]);
+                     }
+                     foreach my $t ($m->look_down('_tag','triangles')) {
+                        push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
+                     }
+                  }
+               }
+            } else {
+               error("$fn: could not parse internal XML after unzipping");
+            }
+         } else {
+            my $xml = $m->contents;
+            $xml =~ s/^<[^>]+>//;         # -- needed
+            my $c = XMLin($xml);          # -- this seems to work
+            foreach my $b (@{$c->{build}->{item}}) {
+               my $o = $c->{resources}->{object}->{$b->{objectid}};
+               my @co;
+               my @tr = split(/\s+/,$b->{transform});
+               my $t;
+               for(my $i=0; $i<4; $i++) {      # rows
+                  for(my $j=0; $j<4; $j++) {   # cols
+                     $t->[$j][$i] = @tr[$j+$i*4];
+                  }
+               }
+               foreach my $c (@{$o->{mesh}->{vertices}->{vertex}}) {
+                  my(@p) = ($c->{x},$c->{y},$c->{z});
+                  for(my $i=0; $i<3; $i++) {
+                     $min[$i] = $p[$i] if($p[$i]<$min[$i]);
+                     $max[$i] = $p[$i] if($p[$i]>$max[$i]);
+                  }
+                  @p = &$mm($t,\@p);
+                  push(@co,\@p);
+               }
+               foreach my $t (@{$o->{mesh}->{triangles}->{triangle}}) {
+                  push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
+               }
+            }
+         }
+      } else {
+         error("$fn: internal format mismatch (no 3D/3dmodel.model)");
+      }
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+         
+   } else {
+      error("$fn: error decoding zip format");
+   }
+   return $p;
 }
 
 sub readOBJ {
@@ -1726,6 +1842,8 @@ sub partRead {
       $p = readAMF($fn);
    } elsif($fn=~/\.obj$/i) {
       $p = readOBJ($fn);
+   #} elsif($fn=~/\.3mf$/i) {
+   #   $p = read3MF($fn);
    } else {
       error("for internal preprocessing (scale,rotate,etc) only .stl, .amf, .obj, no support for <$fn>");
    }
