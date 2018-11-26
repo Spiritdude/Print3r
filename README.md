@@ -6,9 +6,9 @@
 
 ### Examples
 ```
-print3r print cube.gcode
-print3r print cube.stl
-print3r print cube.scad
+print3r --printer=prusa-i3 print cube.scad
+print3r --printer=ender3 --device=/dev/ttyUSB1 print cube.stl
+print3r preview cube.gcode
 ```
 
 ### Main Features
@@ -16,8 +16,8 @@ print3r print cube.scad
 - **slice** `.scad` or `.stl`\* saving `.gcode` without printing
 - **preprocess parts** with `--scale=<x>,<y>,<z>`, `--rotate=<x>,<y>,<z>`, `--translate=<x>,<y>,<z>`, `--random-placement`, `--auto-center`, `--multiply-part=<n>`
 - **use slicer-independent arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, etc.
-- **send Gcode** from command line arguments or console interactively
-- **render Gcode** and sliced .stl, .scad into `.png` image
+- **send Gcode** from command line arguments with **gcode** or console interactively with **gconsole** command
+- **render Gcode** and sliced .stl, .scad into `.png` image with **render** command
 
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
