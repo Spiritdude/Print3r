@@ -18,6 +18,7 @@ print3r preview cube.gcode
 - **use slicer-independent arguments** like `--temperature=<c>`, `--layer-height=<h>`, `--fill-density=<f>`, `--perimeters=<n>`, etc.
 - **send Gcode** from command line arguments with **gcode** or console interactively with **gconsole** command
 - **render Gcode** and sliced .stl, .scad into `.png` image with **render** command
+- **preview Gcode** using `yagv` Gcode viewer with **preview** command
 
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
