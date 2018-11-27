@@ -330,7 +330,7 @@ if($cmd eq 'analyze') {          # -- not yet
          $conf{output} =~ s/\.[^\/\.]$/.png/;
          renderGcode($fn,\%conf);
       } elsif($cmd eq 'preview') {
-         print "$me: launch gcode viewer ($conf{gviewer})\n";
+         print "$me: launch gcode viewer ($conf{gviewer})\n" unless($conf{quiet});
          if(fork()==0) {
             exec($conf{gviewer},$fn);
          }
@@ -464,7 +464,7 @@ sub header {
 }
 
 sub cleanup {
-   print "$me: cleanup\n";
+   print "$me: cleanup\n" unless($conf{quiet});
    unlink @rm if(@rm);
    @rm = ();
 }
