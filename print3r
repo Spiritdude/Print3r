@@ -369,10 +369,22 @@ if($cmd eq 'analyze') {          # -- not yet
    }
    print "$me: commands found at $cpath\n" if($conf{verbose} && $cpath);
    
+   if(!eval { require Term::ReadLine }) {
+      error("missing requirement Term::ReadLine::Gnu perl module, rerun `make requirements` from the installation directory");
+   }
+   
+   my $t = new Term::ReadLine($me);
+   #$t->bind_key(ord "\cc", 'abort');
+   
    print "connected\n";
    while(1) {
-      print "> ";
-      my $ln = readline(STDIN);
+      my $ln;
+      if(0) {
+         print "> ";
+         $ln = readline(STDIN);
+      } else {
+         $ln = $t->readline(">",' ');     # -- supports history (cursor-down/up) 
+      }
       my($cmd,$v) = gconsole($ln,$com,$cpath);
       foreach my $l (split(/\n/,$cmd)) {
          print "send <$l>\n" if($v || $conf{verbose});
@@ -464,7 +476,7 @@ sub header {
 }
 
 sub cleanup {
-   print "$me: cleanup\n" unless($conf{quiet});
+   print "$me: cleanup\n" if($conf{verbose});
    unlink @rm if(@rm);
    @rm = ();
 }
@@ -1294,15 +1306,6 @@ sub printGcode {
       exit -1;
    };
 
-   if(0) {        # -- metadata like UUID
-      printerSend($com,"M105\n");
-      my($resp) = printerResponse($com,"M105\n",{callback=>sub {
-         my($r) = @_;
-         $printer->{uuid} = $1 if($r=~/UUID\s*:\s*(\S+)/);
-         print "$me: UUID=$printer->{uuid}\n" if(!$conf{quiet} && $printer->{uuid});
-      }});
-   }
-   
    my $status = "init";
    my $lst;
    
@@ -2209,12 +2212,12 @@ sub openSerial {
       $com->blocking(0);
       $com->autoflush();
       
-      sleep 1;                           # -- essential wait
-      
-      my $buff;
-      while(read($com,$buff,3)) {        # -- slurp the manifest
-         sleep 0.005;
-      }
+      #sleep 1;                           # -- essential wait
+      #
+      #my $buff;
+      #while(read($com,$buff,3)) {        # -- slurp the manifest
+      #   sleep 0.005;
+      #}
       
    } else {
       $com = Device::SerialPort->new($d || $conf{device}, 1);
@@ -2277,11 +2280,28 @@ sub openSerial {
          print "baudrate: $bb\n" if($conf{verbose});
          sleep 0.1;
          if(!$bb) {
-            die "$me: ERROR: no viable baudrate for $conf{device} found, abort.\n";
+            error("no viable baudrate for $conf{device} found, abort.");
          }
       }
    }
+   
+   sleep 2;    # -- allow the board to (re)boot
+   
    $process->{serial_backend} = $conf{serialif};
+   printerResponse($com,"M115\n",{timeout=>1, callback=>sub {
+      my($m) = @_;
+      # -- slurp manifest ...
+   }});
+   
+   if(0) {        # -- metadata like UUID
+      my $gcode = "M115\n";
+      sleep 0.5;
+      printerSend($com,$gcode);
+      my($resp) = printerResponse($com,$gcode,{timeout=>1});
+      $printer->{uuid} = $1 if($resp=~/UUID\s*:\s*(\S+)/);
+      print "$me: UUID=$printer->{uuid}\n" if(!$conf{quiet} && $printer->{uuid});
+   }
+   
    return $com;
 }
    

@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.1.7
+VERSION=0.1.8
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share
@@ -10,7 +10,7 @@ all::
 	@echo "make requirements install deinstall"
 
 requirements::
-	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Linux::Termios2 Algorithm::BinPack::2D
+	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D
 	sudo apt install libgd-perl yagv
 
 install::
