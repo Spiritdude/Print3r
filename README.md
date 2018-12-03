@@ -38,7 +38,7 @@ print3r preview cube.gcode
 
 ### To Do / Planned
 - ~~slicer agnostic, e.g. support of CuraEngine (just the slicer)~~: done since 0.1.6 with `slic3r`, `slic3r-pe`, `cura-legacy` and `cura`
-- network connectivity, distributed printing via tcp/ip
+- ~~network connectivity, distributed printing via tcp/ip~~: done since 0.2.0 with `client` command and `--device=tcp:<remote-ip>[:<n>]` (n=0 (default),1,2 etc)
 - ~~preview gcode in OpenGL/WebGL zoomable views~~: done with 0.1.6 via external `yagv` viewer
 - multiple extruder support (preferably slicer-independent)
 
