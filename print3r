@@ -1352,7 +1352,7 @@ sub printGcode {
       my($resp) = printerResponse($com,$l,{callback=>sub {
          my($mesg,$com,$cmd) = @_;
          my $now = (time()-$st)/60;
-         if($status ne 'printing') {
+         if(!$conf{quiet} && $status ne 'printing') {
             # ... e.g. parse while heating up the temperature(s)
             # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
             if($status eq 'heating') {
