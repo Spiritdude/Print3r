@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
+# 2018/12/03: 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
 # 2018/11/26: 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
 # 2018/11/17: 0.1.7: more slicer-independent speed settings (print/travel/infill/perimeter/small_perimeter/bridge/retract_speed)
 # 2018/11/09: 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r/ & ~/.config/print3r/) 
@@ -38,7 +39,7 @@ use File::Which;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.1.8';
+my $VERSION = '0.2.0';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -395,7 +396,30 @@ if($cmd eq 'analyze') {          # -- not yet
    }
       
 } elsif($cmd eq 'client') {
-   # -- not yet
+   my $fn = "/tmp/print3r-client-$$.cfg";
+   if(open(my $fh,">",$fn)) {
+      my $p = 3380;
+      my $pp = 0;
+      
+      $pp = $1*1, $p += $pp if($conf{device}=~/(\d+)$/);
+      print $fh "$p:raw:600:$conf{device}:$conf{baudrate} 8DATABITS NONE 1STOPBIT -XONXOFF LOCAL -RTSCTS\n";
+      close $fh;
+
+      push(@rm,$fn);
+
+      if(fork()==0) {
+         exec("ser2net","-n","-c",$fn);
+      }
+      if(!$conf{quiet}) {
+         print "$me: client started, use `--device=tcp:$ENV{HOST}:$pp` to connect\n";
+         print "$me: use CTRL-C to kill/end gateway\n";
+         print "$me: NOTE: anybody on your local network has the capability to access and \n$me:   control this printer; it is YOUR RESPONSIBILITY to secure \n$me:   your local network from unauthorized use of your printer(s)\n";
+      }
+      wait;
+      
+   } else {
+      error("couldn't start ser2net job");
+   }
    
 } else {
    print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
@@ -430,6 +454,7 @@ if($cmd eq 'analyze') {          # -- not yet
       render <file> [...]     render an image (use '--output=sample.png' or so)
       gcode <code1> [...]     send gcode lines
       gconsole                start gcode console
+      client                  map USB connected printer to network (per device)
       help
    
    examples:
@@ -438,6 +463,7 @@ if($cmd eq 'analyze') {          # -- not yet
       $me --layer-height=0.2 --output=test.gcode slice cube.stl
       $me --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
       $me --printer=corexy --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      $me --printer=ender3 --device=tcp:192.168.0.2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
       $me print cube.scad
       $me --scad print \"cube(20)\"
       $me gcode 'G28 X Y' 'G1 X60' 'G28 Z'
@@ -2179,6 +2205,29 @@ sub openSerial {
    my($d) = @_;
    my $com;
 
+   if($d=~/^tcp:(\S+)/i) {       # -- tcp device?
+      $d = $1;
+      my $sdev = "/tmp/print3r-device-$d";
+      $SIG{CHLD} = 'IGNORE';
+      my $p = 3380;
+      $p += $1*1 if($d=~s/:(\d+)$//);
+      print "$me: connect $d:$p (socat)\n" if($conf{verbose});
+      if(!-e $sdev) {
+         if(fork()==0) {
+            if(fork()==0) {
+               print "$me: launch socat $d:$p\n" if($conf{verbose});
+               exec("socat","pty,raw,echo=0,b$conf{baudrate},link=$sdev","tcp:$d:$p");
+            }
+            wait;
+            print "$me: socat ended\n" if($conf{verbose});
+            unlink $sdev;
+         }
+         #wait;
+         sleep 0.5;
+      }
+      print "$me: reroute $d:$p => $sdev\n" if($conf{verbose});
+      $d = $sdev;
+   }
    $com = Device::SerialPort->new($d || $conf{device}, 1);
    error("can't open $conf{device}") if(!$com);
 

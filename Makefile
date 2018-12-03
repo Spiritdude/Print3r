@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.1.8
+VERSION=0.2.0
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share
@@ -11,7 +11,7 @@ all::
 
 requirements::
 	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D
-	sudo apt install libgd-perl yagv
+	sudo apt install libgd-perl yagv ser2net socat
 
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
