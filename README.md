@@ -99,6 +99,7 @@ Print3r (print3r) 0.1.6 USAGE: [<options>] <cmd> <file1> [<...>]
       render <file> [...]     render an image (use '--output=sample.png' or so)
       gcode <code1> [...]     send gcode lines
       gconsole                start gcode console
+      client                  map USB connected printer to network (per device)
       help
 
    examples:
@@ -107,6 +108,7 @@ Print3r (print3r) 0.1.6 USAGE: [<options>] <cmd> <file1> [<...>]
       print3r --layer-height=0.2 --output=test.gcode slice cube.stl
       print3r --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
       print3r --printer=corexy --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      print3r --printer=ender3 --device=tcp:192.168.0.2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
       print3r print cube.scad
       print3r --scad print "cube(20)"
       print3r gcode 'G28 X Y' 'G1 X60' 'G28 Z'

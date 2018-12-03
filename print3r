@@ -397,6 +397,9 @@ if($cmd eq 'analyze') {          # -- not yet
       
 } elsif($cmd eq 'client') {
    my $fn = "/tmp/print3r-client-$$.cfg";
+   if(!-e $conf{device}) {
+      error("can't open $conf{device} for remote access: $!");
+   }
    if(open(my $fh,">",$fn)) {
       my $p = 3380;
       my $pp = 0;
