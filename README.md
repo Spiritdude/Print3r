@@ -68,7 +68,7 @@ See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how
 
 ## Usage
 ```
-Print3r (print3r) 0.1.6 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.2.0 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
