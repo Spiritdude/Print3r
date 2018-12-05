@@ -2224,6 +2224,7 @@ sub openSerial {
             wait;
             print "$me: socat ended\n" if($conf{verbose});
             unlink $sdev;
+            exit 0;
          }
          #wait;
          sleep 0.5;
