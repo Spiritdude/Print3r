@@ -2,7 +2,7 @@
 
 ## Introduction
 
-**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slice of your choice (Slic3r, Slic3r PE, CuraEngine, CuraEngine-Legacy).
+**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, CuraEngine, CuraEngine-Legacy).
 
 ### Examples
 ```
