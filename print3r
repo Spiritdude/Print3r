@@ -468,8 +468,8 @@ if($cmd eq 'analyze') {          # -- not yet
       $me slice cube.stl
       $me --layer-height=0.2 --output=test.gcode slice cube.stl
       $me --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
-      $me --printer=corexy --device=/dev/ttyUSB2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
-      $me --printer=ender3 --device=tcp:192.168.0.2 --nozzle-diameter=0.5 --layer-height=0.4 --fill-density=0 print cube.stl
+      $me --printer=corexy --device=/dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
+      $me --printer=ender3 --device=tcp:192.168.0.2 --layer-height=0.25 print cube.stl
       $me print cube.scad
       $me --scad print \"cube(20)\"
       $me gcode 'G28 X Y' 'G1 X60' 'G28 Z'
