@@ -400,6 +400,9 @@ if($cmd eq 'analyze') {          # -- not yet
    if(!-e $conf{device}) {
       error("can't open $conf{device} for remote access: $!");
    }
+   if(!which('ser2net')) {
+      error("ser2net not found or installed");
+   }
    if(open(my $fh,">",$fn)) {
       my $p = 3380;
       my $pp = 0;
@@ -2214,6 +2217,9 @@ sub openSerial {
       $SIG{CHLD} = 'IGNORE';
       my $p = 3380;
       $p += $1*1 if($d=~s/:(\d+)$//);
+      if(!which('socat')) {
+         error("socat not found or installed");
+      }
       print "$me: connect $d:$p (socat)\n" if($conf{verbose});
       if(!-e $sdev) {
          if(fork()==0) {
