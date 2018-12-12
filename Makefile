@@ -11,8 +11,9 @@ all::
 
 requirements::
 	sudo apt install libexpat-dev libcurses-perl libncurses5-dev libreadline-dev
-	sudo cpan Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D
-	sudo apt install libgd-perl yagv ser2net socat
+	sudo cpan File::Which Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D 
+	sudo apt install libgd-perl ser2net socat 
+	sudo apt install yagv
 
 install::
 	sudo cp ${CMD} ${DEST_BIN}/
