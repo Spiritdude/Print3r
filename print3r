@@ -39,7 +39,7 @@ use File::Which;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.2.0';
+my $VERSION = '0.2.1';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -278,6 +278,13 @@ if($cmd eq 'analyze') {          # -- not yet
          $fn = $conf{output};
          $conf{output} = $c_fn;
          push(@rm,$fn);
+      } else if($fn=~/\.sccad$/i || $conf{sccad}) {
+         my $c_fn = $conf{output};
+         $conf{output} = "/tmp/print3r-$$.stl";
+         sccadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         $conf{output} = $c_fn;
+         push(@rm,$fn);
       }
       slicePart($fn,\%conf);
    }
@@ -294,6 +301,11 @@ if($cmd eq 'analyze') {          # -- not yet
       if($fn=~/\.scad$/i || $conf{scad}) {
          $conf{output} = "/tmp/print3r-$$-$n.stl";
          scadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         push(@rm,$fn);
+      } else if($fn=~/\.sccad$/i || $conf{sccad}) {
+         $conf{output} = "/tmp/print3r-$$-$n.stl";
+         sccadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
       }
@@ -314,7 +326,7 @@ if($cmd eq 'analyze') {          # -- not yet
             printGcode($fn,\%conf);
          }
       } else {
-         print "$me: WARN: file-format not supported: <$fn>, only scad, ",join(", ",sort keys %sliceExtSupported),", gcode\n";
+         print "$me: WARN: file-format not supported: <$fn>, only scad, sccad, ",join(", ",sort keys %sliceExtSupported),", gcode\n";
       }
       $n++;
    }
@@ -555,6 +567,51 @@ sub scadToSTL {
    wait();
    if($?) {
       print "\n$me: openscad: ERROR (bad options/arguments?)\n";
+   } else {
+      print ", done.\n" unless($conf{quiet});
+   }
+}
+
+sub sccadToSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $fno;
+   
+   if($conf{sccad}) {       # -- any code to execute as well? $fn isn't a filename but code itself
+      my $tmp = "/tmp/$me-$$-exec.sccad";
+      open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
+      foreach my $l (split(/[,\:]/,$conf{sccadlib})) {
+         print $fh "include <$l>\n";
+      }
+      $fno = $fn;
+      $fn .= ";" unless($fn=~/;\s*$/);
+      print $fh $fn;
+      close $fh;
+      push(@rm,$tmp);
+      $fn = $tmp;
+   }
+   
+   if(fork()==0) {
+      $conf{output} = $fn, $conf{output} =~ s/.\w+$/.stl/ unless($conf{output});
+      unlink $conf{output};
+      my(@a) = ('scriptcad','-o',$conf{output},$fn);
+      unless($conf{verbose}) {
+         close STDOUT;
+         close STDERR;
+      }
+      exec(@a);
+   }
+   unless($conf{quiet}) {
+      if($conf{scad}) {
+         print "$me: sccad to stl: '$fno'";
+         print " with libraries: $conf{sccadlib}" if($conf{sccadlib});
+      } else {
+         print "$me: sccad to stl: <$fn>";
+      }
+   }
+   wait();
+   if($?) {
+      print "\n$me: scriptcad: ERROR (bad options/arguments?)\n";
    } else {
       print ", done.\n" unless($conf{quiet});
    }
