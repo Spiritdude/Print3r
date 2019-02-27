@@ -278,7 +278,7 @@ if($cmd eq 'analyze') {          # -- not yet
          $fn = $conf{output};
          $conf{output} = $c_fn;
          push(@rm,$fn);
-      } else if($fn=~/\.sccad$/i || $conf{sccad}) {
+      } elsif($fn=~/\.sccad$/i || $conf{sccad}) {
          my $c_fn = $conf{output};
          $conf{output} = "/tmp/print3r-$$.stl";
          sccadToSTL($fn,\%conf);
@@ -303,7 +303,7 @@ if($cmd eq 'analyze') {          # -- not yet
          scadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
-      } else if($fn=~/\.sccad$/i || $conf{sccad}) {
+      } elsif($fn=~/\.sccad$/i || $conf{sccad}) {
          $conf{output} = "/tmp/print3r-$$-$n.stl";
          sccadToSTL($fn,\%conf);
          $fn = $conf{output};
