@@ -16,7 +16,7 @@
 # 2018/11/17: 0.1.7: more slicer-independent speed settings (print/travel/infill/perimeter/small_perimeter/bridge/retract_speed)
 # 2018/11/09: 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r/ & ~/.config/print3r/) 
 # 2018/11/08: 0.1.5: new option '--scad=<code>' to additionally execute openscad code
-# 2018/11/04: 0.1.4: various improvements, remap() of general settings to slice-specific settings via settings/<slicer>/map.ini
+# 2018/11/04: 0.1.4: various improvements, remap() of general settings to slicer-specific settings via settings/<slicer>/map.ini
 # 2018/10/22: 0.1.1: better support for '--slicer=cura' and 'cura-legacy'
 # 2018/10/19: 0.1.0: '--slicer=<slicer>' with '--printer=<profile>' leads to settings/<slicer>/<profile>, '@<setting>' leads to 'settings/<setting>'
 # 2018/10/10: 0.0.9: '.amf' and '.obj' native support for preprocessing (scale,rotate,translate,mirror)
@@ -146,7 +146,7 @@ if($conf{printer}) {
 
    # -- complex strategy:
    #     1) merge all data
-   #     2) consider 'default.ini' regardless for sane base **slice-indepdendent** settings
+   #     2) consider 'default.ini' regardless for sane base **slicer-indepdendent** settings
    #     3) gather printer specifics 
 
    print "$me: combine printer profile:\n" if($conf{verbose});
