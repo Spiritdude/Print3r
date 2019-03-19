@@ -11,7 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2019/03/19: 0.2.2: support for 'skirts', 'brims' and 'rafts' slicer-independent
+# 2019/03/19: 0.2.2: support for 'skirts', 'brims' and 'rafts', 'support' and 'seam' slicer-independent
 # 2018/12/03: 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
 # 2018/11/26: 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
 # 2018/11/17: 0.1.7: more slicer-independent speed settings (print/travel/infill/perimeter/small_perimeter/bridge/retract_speed)
