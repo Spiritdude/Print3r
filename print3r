@@ -676,6 +676,9 @@ sub remap {
          } else {
             my $v = $expr; 
             $v =~ s/\{([^}]+)\}/eval($1)/eg;
+            if($@) {
+               print STDERR "\n$me ERROR: in evaluation of $k = '$expr': $@\n";
+            }
             $cn->{$k} = $v;
             $done->{$k}++;
          }
