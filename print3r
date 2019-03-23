@@ -595,7 +595,7 @@ sub sccadToSTL {
    if(fork()==0) {
       $conf{output} = $fn, $conf{output} =~ s/.\w+$/.stl/ unless($conf{output});
       unlink $conf{output};
-      my(@a) = ('scriptcad','-o',$conf{output},$fn);
+      my(@a) = ('scriptcad','--merge','-o',$conf{output},$fn);
       unless($conf{verbose}) {
          close STDOUT;
          close STDERR;
@@ -1466,6 +1466,8 @@ sub printGcode {
             $eta_e ? ($eta_e > 36*60 ? sprintf("%.1fdy",$eta_e/60/24) : $eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
             $layer));
          printerResponse($com);
+         #printerSend($com,"M31\n");
+         #printerResponse($com);
          $lst = time();
       }
    }
