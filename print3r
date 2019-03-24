@@ -582,7 +582,7 @@ sub sccadToSTL {
       my $tmp = "/tmp/$me-$$-exec.sccad";
       open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
       foreach my $l (split(/[,\:]/,$conf{sccadlib})) {
-         print $fh "include <$l>\n";
+         print $fh "include('$l');\n";
       }
       $fno = $fn;
       $fn .= ";" unless($fn=~/;\s*$/);
