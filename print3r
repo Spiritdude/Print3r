@@ -11,7 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2019/04/10: 0.2.3: support for '--prepend_gcode=' for start-gcode addition, and '--layer-gcode=...'
+# 2019/04/10: 0.2.3: support for '--prepend_gcode=...' for start-gcode addition, and '--layer-gcode=...'
 # 2019/03/19: 0.2.2: support for 'skirts', 'brims' and 'rafts', 'support' and 'seam' slicer-independent
 # 2018/12/03: 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
 # 2018/11/26: 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
@@ -68,7 +68,7 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
    'auto_center'=>1,'random_placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
-   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer-gcode'=>1);
+   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
@@ -469,6 +469,8 @@ if($cmd eq 'analyze') {          # -- not yet
       --output=<file>         define output file for 'slice' and 'render' command
       --scad                  consider all arguments as actual OpenSCAD code (not files)
       --scadlib=<files>       define OpenSCAD files separated by \",\" or \":\"
+      --prepend-gcode=...     add manually start-gcode
+      --layer-gcode=...       insert gcode at layer change
       part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
@@ -1469,9 +1471,12 @@ sub printGcode {
                int($now/60),$now%60,$eta_e?sprintf(" eta %dh %02dm,",int($eta_e/60),$eta_e%60):"",100*$pos/$pos_tot,$cur_z,$layer,$cur_e/1000,$conf{verbose}?"\n":"\r"
          }
       }
-   
-      $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
-      $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if(/;\s*LAYER:\s*(\d+)/);
+
+      # -- cura only (for now)
+      if($conf{slicer} eq 'cura') {
+         $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
+         $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if(/;\s*LAYER:\s*(\d+)/);
+      }
       
       next if($l=~/^;/ || $l=~/^\s*$/);     # -- comments or empty lines are not sent
 
