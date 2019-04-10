@@ -323,6 +323,12 @@ if($cmd eq 'analyze') {          # -- not yet
             $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.png/;
             $conf{output} = $o if(defined $o);
             renderGcode($fn,\%conf);
+         } elsif($cmd eq 'preview') {
+            print "$me: launch gcode viewer ($conf{gviewer})\n" unless($conf{quiet});
+            if(fork()==0) {
+               exec($conf{gviewer},$fn);
+            }
+            wait;
          } else {
             printGcode($fn,\%conf);
          }
@@ -1460,7 +1466,7 @@ sub printGcode {
          }
       }});
    
-      if(time()-$lst>1) {           # -- update printer display
+      if(time()-$lst>3) {           # -- update printer display
          printerSend($com,sprintf("M117 %d%% eta %s l#%d\n",100*$pos/$pos_tot,
             #$eta > 36*60 ? sprintf("%.1fdy",$eta/60/24) : $eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m",
             $eta_e ? ($eta_e > 36*60 ? sprintf("%.1fdy",$eta_e/60/24) : $eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
