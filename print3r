@@ -1192,6 +1192,8 @@ sub slicePart {
          close $fh;
          push(@a,'--load',$tmp);
          push(@rm,$tmp);
+         #push(@a,'--gcode-comments');
+         push(@a,'--before-layer-gcode=;LAYER:[layer_num]');      # -- make it Cura compatible a bit
       }
       if(defined $conf{output}) {
          unlink $conf{output};
@@ -1426,8 +1428,8 @@ sub printGcode {
          $p->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
          $p->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
          my $r = 1/$process->{layer_total} * $process->{layer_current};
-         $p->{a2} = $r;
-         $p->{b2} = 1-$r;
+         $p->{a2} = 1-$r;
+         $p->{b2} = $r;
          $p->{a3} = $r < 1/2 ? 1-$r*2 : 0;
          $p->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
          $p->{c3} = $r > 1/2 ? ($r-1/2)*2 : 0;
@@ -1477,7 +1479,7 @@ sub printGcode {
          $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
          $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if(/;\s*LAYER:\s*(\d+)/);
       }
-      
+
       next if($l=~/^;/ || $l=~/^\s*$/);     # -- comments or empty lines are not sent
 
       print "send: '$l'" if($conf{verbose});
