@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.2.3: support for `--prepend_gcode=...` for start-gcode addition, and `--layer-gcode=...`
 - 0.2.2: support for `skirts`, `brims` and `rafts`, `support` and `seam` slicer-independent
 - 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
 - 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
