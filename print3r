@@ -68,7 +68,8 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
    'auto_center'=>1,'random_placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
-   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1);
+   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,
+   'phase2_min'=>1,'phase3_min'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
@@ -174,6 +175,10 @@ if($conf{printer}) {
                foreach my $k (sort keys %$c) {        # -- merge data into conf
                   # -- override conf but not if 'cli' defined it already
                   if(!defined $conf{$k} || !defined $conf_src{$k} || $conf_src{$k}eq'printer') {
+                     if($c->{$k}=~/\$\{\w+\}/||$c->{$k}=~/\$\w+/) {    # -- any variable to replace?
+                        $c->{$k} =~ s/\$\{(\w+)\}/defined $conf{$1} ? $conf{$1} : "\${$1\}" /eg;   # -- only replace if variable is known
+                        $c->{$k} =~ s/\$(\w+)/defined $conf{$1} ? $conf{$1} : "\$$1" /eg;          # -- only replace if variable is known
+                     }
                      $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer';
                   }
                }
@@ -619,7 +624,7 @@ sub sccadToSTL {
       exec(@a);
    }
    unless($conf{quiet}) {
-      if($conf{scad}) {
+      if($conf{sccad}) {
          print "$me: sccad to stl: '$fno'";
          print " with libraries: $conf{sccadlib}" if($conf{sccadlib});
       } else {
@@ -1376,6 +1381,20 @@ sub printGcode {
    
    open(my $fh,"<",$fn);
    return if(!$fh);
+   
+   if($conf{layer_gcode} && $conf{slicer}=~/slic3r/) {   # -- we need to find total count of layers
+      my @s = stat($fn);
+      my $p = $s[7] * 0.9;
+      $p = $s[7] < 2000 ? 0 : $p;
+      seek($fh,$p,-1);
+      my $tail;
+      while(<$fh>) {
+         chop;
+         $process->{layer_total} = $1 if(/LAYER:(\d+)/);
+      }
+      seek($fh,0,0);  
+      $process->{layer_total}++;          # -- count is +1 of last layer number (starts with 0)
+   }
 
    my $pos = 0;
    my $pos_tot = (stat($fn))[7];
@@ -1428,13 +1447,23 @@ sub printGcode {
          $p->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
          $p->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
          my $r = 1/$process->{layer_total} * $process->{layer_current};
-         $p->{a2} = 1-$r;
-         $p->{b2} = $r;
-         $p->{a3} = $r < 1/2 ? 1-$r*2 : 0;
-         $p->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
-         $p->{c3} = $r > 1/2 ? ($r-1/2)*2 : 0;
+         my $o2 = $conf{phase2_min} || 0;
+         my $o3 = $conf{phase3_min} || 0;
+         my $o4 = $conf{phase4_min} || 0;
+         my $r2 = $r*(1-$o2) + $o2;
+         my $r3 = $r*(1-$o3) + $o3;
+         my $r4 = $r*(1-$o4) + $o4;
+         $p->{a2} = 1-$r2;
+         $p->{b2} = $r2;
+         $p->{a33} = $r < 1/2 ? 1-$r*2 : 0;
+         $p->{b33} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
+         $p->{c33} = $r >= 1/2 ? ($r-1/2)*2 : 0;
+         $p->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
+         $p->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
+         $p->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
          $l =~ s/\$\{([^\}]+)\}/$p->{$1}/g;
          $l =~ s/\{([^\}]+)\}/eval($1)/eg;
+         print "$me: gcode insert (layer-gcode): $l\n" if($conf{verbose}>1 && !$conf{quiet});
          printerSend($com,$l."\n");
          printerResponse($com);
       }
@@ -1474,14 +1503,24 @@ sub printGcode {
          }
       }
 
-      # -- cura only (for now)
-      if($conf{slicer} eq 'cura') {
-         $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
-         $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if(/;\s*LAYER:\s*(\d+)/);
-      }
+      $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
+      $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/);
 
       next if($l=~/^;/ || $l=~/^\s*$/);     # -- comments or empty lines are not sent
 
+      if($l=~/^T\d+/ && $conf{toolmap}) {
+         foreach my $t (split(/,/,$conf{toolmap})) {
+            my($a,$b) = split(/[:=]/,$t);
+            last if($l =~ s/$a/$b/);
+         }
+         print "$me: gcode change (toolmap): $l\n" if($conf{verbose}>1 && !$conf{quiet});
+      }
+      
+      if(0 && $l=~/\$\{(\w+)\}/) {    # -- any variable to replace?
+         $l =~ s/\$\{(\w+)\}/defined $conf{$1} ? $conf{$1} : $process->{$1}/eg;
+         print "$me: gcode change (variables): $l\n" if($conf{verbose}>1 && !$conf{quiet});
+      }
+      
       print "send: '$l'" if($conf{verbose});
 
       printerSend($com,$l);
