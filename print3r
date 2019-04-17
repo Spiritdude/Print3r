@@ -647,6 +647,7 @@ sub readSlicerConf {
    my $n = 0;
 
    if(open(my $fh,"<",$fn)) {
+      my $kl;
       while(<$fh>) {
          if($n==0 && /^{/) {       # -- is it JSON?
             local $/;              # -- read next in one go (not line-wise)
@@ -655,11 +656,23 @@ sub readSlicerConf {
          }
          chop;
          s/^\s*#.*$//;      # -- remove comments
-         s/\s*$//;      # -- remove trailing spaces
-         next if(/^\s*#/||/^\s*$/);
+         s/\s*$//;          # -- remove trailing spaces
+         next if(/^\s*#/);  
+         $kl = undef, next if(/^\s*$/);
          my($k,$v);
-         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*"([^"]*)"/);  # -- cura-like
-         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $v =~ s/#.*$//, $i->{$k} = $v, next if(/^([\w\-]+)\s*=\s*(\S.*)$/);    # -- slicer-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, $kl = $k, next if(/^([\w\-]+)\s*=\s*"([^"]*)"/);  # -- cura-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $v =~ s/#.*$//, $i->{$k} = $v, $kl = $k, next if(/^([\w\-]+)\s*=\s*(\S.*)$/);    # -- slicer-like
+         if($kl && /^(\t| {3,})(\S.*)/) {    # -- multi-line setting
+            $v = $2;
+            if($v=~/"([^"]+)"/) {
+               $v = $1;
+            } else {
+               $v =~ s/#.*$//;
+            }
+            $v =~ s/\\n/\n/g;
+            $i->{$kl} .= $v;
+            next;
+         }
          $n++;
       }
       close $fh;
@@ -1469,6 +1482,50 @@ sub printGcode {
       }
    };
    
+   my($min,$max,$sz,$cp);
+   
+   my $posScript = sub {
+      my($rx,$ry,$rz) = ($cp->{x}/$sz->{x},$cp->{y}/$sz->{y},$cp->{z}/$sz->{z});
+      my $r = atan2($ry-0.50001,$rx-0.50001) / (2*pi);
+      my($a,$b,$c);
+      $a = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;
+      $b = $r < 1/3 ? $r*3 : $r < 2/3 ? 1-($r-1/3)*3 : 0;
+      $c = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1-($r-2/3)*3 : 0;
+      my $l = "M165 A$a B$b C$c";
+      print "$me: gcode insert (post-gcode): $l\n" if(1||$conf{verbose}>1 && !$conf{quiet});
+      printerSend($com,"$l\n");
+      printerResponse($com);
+   };
+   
+   if($conf{colorxy}) {
+      $min->{x} = $min->{y} = $min->{z} = 1e38;
+      $max->{x} = $max->{y} = $max->{z} = -1e38;
+      while(<$fh>) {
+         my($c,$id) = (/^([MG])(\d+)/);
+         if($c eq 'G' && ($id == 1 || $id == 0)) {      # -- move or extrude
+            my $px;
+            foreach my $pa (split(/ /)) {
+               $px->{lc($1)} = $2 if($pa=~/([XYZE])([\d\.]+)/);
+            }
+            if($px->{e}) {    
+               foreach my $k (keys %$px) {   
+                  $max->{$k} = $px->{$k} if($max->{$k}<$px->{$k});
+                  $min->{$k} = $px->{$k} if($min->{$k}>$px->{$k});
+               }
+            } elsif(defined $px->{z}) {
+               my $k = 'z';
+               $max->{$k} = $px->{$k} if($max->{$k}<$px->{$k});
+               $min->{$k} = $px->{$k} if($min->{$k}>$px->{$k});
+            }
+         }
+      }
+      $sz->{x} = $max->{x}-$min->{x};
+      $sz->{y} = $max->{y}-$min->{y};
+      $sz->{z} = $max->{z}-$min->{z};
+      print "$me: extruding space: +$min->{x}+$min->{y} $sz->{x}x$sz->{y}x$sz->{z}\n" unless($conf{quiet});
+      seek($fh,0,0);
+   }
+   
    while(<$fh>) {
       my $l = $_;
       $pos += length($l);
@@ -1503,6 +1560,16 @@ sub printGcode {
          }
       }
 
+      if($conf{colorxy} && $l =~ /^G1\s+(\S.+)/) {
+         my $c = $1;
+         my $e = 0;
+         foreach my $p (split(/ /,$c)) {
+            my($a,$u) = ($p=~/([XYE])([\d\.]+)/);
+            $cp->{lc($a)} = $u - $min->{lc($a)} if($a);
+            $e++ if($a eq 'E');
+         }
+         &$posScript() if($e);
+      }
       $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
       $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/);
 
