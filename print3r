@@ -38,10 +38,11 @@ use Math::Trig ':pi';
 use JSON;                          
 use XML::Simple;                    # -- reading .amf (XML)
 use File::Which;
+use IO::Socket::INET;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.2.3';
+my $VERSION = '0.2.5';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -68,12 +69,12 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
    'auto_center'=>1,'random_placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
-   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,
+   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
    'phase2_min'=>1,'phase3_min'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 
-my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa','cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine');
+my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa3d','prusa'=>'prusa-slicer','cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine');
 
 my $printer;
 $printer->{build}->{x} = 200;
@@ -95,6 +96,7 @@ foreach (@ARGV) {                # -- parse command-line arguments
    }
    my($k,$v);          # -- NOTE: all options '-' => '_' for consistency, also all settings from macros or files
    $k = $1, $k =~ s/\-/_/g, $conf{$k} = '\1', $conf_src{$k} = 'cli', next if(/^--([\w\-\.]+)$/);
+   ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} .= $v, $conf_src{$k} = 'cli', next if(/^--([\w\-\.]+)\+=(.*)$/);
    ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} = $v, $conf_src{$k} = 'cli', next if(/^--([\w\-\.]+)=(.*)$/);
    push(@f,$_);
 }
@@ -856,7 +858,10 @@ sub renderGcode {
    my $tail;
    while(<$fh>) {
       chop;
-      if(/^; filament used = ([\d\.]+)/) {
+      if(/^; filament used = ([\d\.]+)/) {               # -- slic3r*
+         $process->{filament_used} = $1;
+         $tail++;
+      } elsif(/^; filament used \[mm\] = ([\d\.]+)/) {   # -- prusa
          $process->{filament_used} = $1;
          $tail++;
       } elsif($tail && /^; (\w+) = (.*)/) {
@@ -1133,7 +1138,7 @@ sub slicePart {
       push(@rm,@fx);
    }
 
-   if(!($conf{slicer}=~/slic3r/) && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
+   if((!$conf{stick_position}) && !($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa') && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
       print ", arrange ",scalar @{$fn}," parts" unless($conf{quiet} || @{$fn}==1);
       my @pa;
       foreach my $f (@$fn) { 
@@ -1147,7 +1152,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/)) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa')) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1182,7 +1187,7 @@ sub slicePart {
    
    print "$me: settings for slicing:\n".toJSON(\%conf)."\n" if($conf{verbose});
    
-   if($conf{slicer}=~/slic3r/) {                         # -- slic3r & slic3r-pe
+   if($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa') {                         # -- slic3r & slic3r-pe
       # -- compose argument list for slic3r
       if(1) {
          # -- note: slic3r and slic3r-pe won't support all settings coming from command line
@@ -1197,6 +1202,7 @@ sub slicePart {
          foreach my $k (sort keys %$c) {        # -- write from existing base configuration
             unless(defined $conf{$k}) {
                my $d = $c->{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
                print $fh "$k = $d\n" unless($conf{$k});
             }
          }
@@ -1204,10 +1210,12 @@ sub slicePart {
          foreach my $k (sort keys %conf) {      # -- command line arguments & macros
             unless($internOption{$k}) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
                print $fh "$k = $d\n";
             }
          }
          close $fh;
+         push(@a,'--export-gcode') if($conf{slicer}eq'prusa');
          push(@a,'--load',$tmp);
          push(@rm,$tmp);
          #push(@a,'--gcode-comments');
@@ -1224,10 +1232,10 @@ sub slicePart {
          my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
          # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
          #          in case there are multiple parts, we don't know how slic3r combines them ...
-         push(@a,'--print-center',join(",",@pos));
+         push(@a,$conf{slicer}eq'prusa'?'--center':'--print-center',join(",",@pos));
          print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
       } elsif($conf{auto_center}) {
-         push(@a,'--print-center',($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
+         push(@a,$conf{slicer}eq'prusa'?'--center':'--print-center',($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
       }
       if(0) {
          foreach my $k (sort keys %conf) {      # -- likely not needed, since we rewrote temporary config with all setttings
@@ -1320,35 +1328,40 @@ sub slicePart {
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
       #push(@a,'-j',$conf{printer}) if($conf{printer});
       #push(@a,"-g");
-      #push(@a,"-e0");        # -- doesn't work, throws error
-      push(@a,"-s","extruder_nr=0");
-      my @ks;
-      if(open(my $fh,"<","$cpath/slicer/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
-         while(<$fh>) {
-            chop; 
-            if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
-               my($k,$v) = ($1,$2);
-               $v =~ s/\\n/\n/g;
-               push(@a,"-s","$k=$v") unless($conf{$k});
+      foreach my $n (0..($conf{extruder_count}||1)-1) {
+         #push(@a,"-e$n");        # -- doesn't work, throws error
+         push(@a,"-s","extruder_nr=$n");
+         my @ks;
+         if(open(my $fh,"<","$cpath/slicer/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+            while(<$fh>) {
+               chop; 
+               if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+                  my($k,$v) = ($1,$2);
+                  $v =~ s/\\n/\n/g;
+                  push(@a,"-s","$k=$v") unless($conf{$k});
+               }
             }
+            close $fh;
+         } else {
+            print "$me: WARN: no base.ini found in @paths\n";
          }
-         close $fh;
-      } else {
-         print "$me: WARN: no base.ini found in @paths\n";
-      }
-      my $c;
-      foreach my $k (sort keys %conf) {
-         next if($internOption{$k});
-         $c->{$k} = $conf{$k};         # -- just copy
-      }
-      $c = remap($c);
-      foreach my $k (sort keys %$c) {
-         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
-         push(@a,"-s","$k=$v");
+         my $c;
+         foreach my $k (sort keys %conf) {
+            next if($internOption{$k});
+            $c->{$k} = $conf{$k};         # -- just copy
+         }
+         $c = remap($c);
+         foreach my $k (sort keys %$c) {
+            my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+            push(@a,"-s","$k=$v");
+         }
       }
       if(ref($fn)eq'ARRAY') {
-         foreach(ref($fn)?@$fn:$fn) {
-            push(@a,"-l",$_);
+         my $n = 0;
+         foreach my $o (ref($fn)?@$fn:$fn) {
+            #push(@a,"-e$n");
+            #push(@a,"-s","extruder_nr=$n"); $n++;
+            push(@a,"-l",$o);
             # push(@a,'--next');
          }
       } else {
@@ -1367,10 +1380,29 @@ sub slicePart {
      
    $process->{time}->{slice} = time()-$st;
 
-   if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura & slic3r
+   if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura or slic3r*
       $process->{filament_used} = $2 * ($3 eq 'm' ? 1000:1);               # -- filament_used [mm] always
+   } elsif($out=~/filament used\s\[mm\]\s=\s([\d\.]+)/i) {      # -- prusa
+      $process->{filament_used} = $1;
    } elsif($out=~/Filament:\s*([\d\.]+)/i) {       # -- cura-legacy
       $process->{filament_used} = $1;
+   } else {
+      open(my $fh,"<",$conf{output});
+      seek($fh,4096,-1);         # -- try to parse end of .gcode to pick up metadata
+      my $tail;
+      while(<$fh>) {
+         chop;
+         if(/^; filament used = ([\d\.]+)/) {               # -- slic3r*
+            $process->{filament_used} = $1;
+            $tail++;
+         } elsif(/^; filament used \[mm\] = ([\d\.]+)/) {   # -- prusa
+            $process->{filament_used} = $1;
+            $tail++;
+         } elsif($tail && /^; (\w+) = (.*)/) {
+            $printer->{$1} = $2;
+         }
+      }
+      close $fh;
    }
    
    if($exit) {
@@ -1425,25 +1457,18 @@ sub printGcode {
    $SIG{INT} = sub {
       print "\n\taborting print (max $conf{timeout}s) ...\n";
       sleep 1;
-      my $done;
-      foreach my $p (reverse @paths) {
-         if(open(my $fh,"<","$p/gcode/abort.gcode")) {
-            while(<$fh>) {
-               my $abort;
-               
-               next if(/^\s*;/);
-               printerSend($com,$_);
-      
-               my($resp) = printerResponse($com,$_,{timeout=>$conf{timeout}});
-               last if($resp eq 'abort');
-            }
-            close($fh);
-            $done++;
-            last;
+
+      if(!$conf{abort_gcode}) {
+         print "\n$me: WARN: no abort_gcode defined, nozzle/bed might be still heating/hot\n";
+      } else {
+         foreach my $l (split(/\n/,$conf{abort_gcode})) {
+            next if($l=~/^\s*;/);
+            $l .= "\n";
+            printerSend($com,$l);
+         
+            my($resp) = printerResponse($com,$l,{timeout=>$conf{timeout}});
+            last if($resp eq 'abort');
          }
-      }
-      if(!$done) {
-         print "\n$me: WARN: .../gcode/abort.gcode not found\n";
       }
       cleanup();
       exit -1;
@@ -1460,22 +1485,17 @@ sub printGcode {
          $p->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
          $p->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
          my $r = 1/$process->{layer_total} * $process->{layer_current};
-         my $o2 = $conf{phase2_min} || 0;
-         my $o3 = $conf{phase3_min} || 0;
-         my $o4 = $conf{phase4_min} || 0;
-         my $r2 = $r*(1-$o2) + $o2;
-         my $r3 = $r*(1-$o3) + $o3;
-         my $r4 = $r*(1-$o4) + $o4;
-         $p->{a2} = 1-$r2;
-         $p->{b2} = $r2;
+         $p->{a2} = 1-$r;
+         $p->{b2} = $r;
          $p->{a3} = $r < 1/2 ? 1-$r*2 : 0;
          $p->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
          $p->{c3} = $r >= 1/2 ? ($r-1/2)*2 : 0;
          $p->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
          $p->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
          $p->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
-         $l =~ s/\$\{([^\}]+)\}/$p->{$1}/g;
-         $l =~ s/\{([^\}]+)\}/eval($1)/eg;
+         $l =~ s/\$\{([^\}]+)\}/$p->{$1}/g;     # -- replace variables "${var}"
+         $l =~ s/\{([^\}]+)\}/eval($1)/eg;      # -- eval expressions "{expr}"
+         $l =~ s/&(\w+)\(([^\)]+)\)/inline_function($1,inline_args("$2"))/eg;    # -- call functions
          print "$me: gcode insert (layer-gcode): $l\n" if($conf{verbose}>1 && !$conf{quiet});
          printerSend($com,$l."\n");
          printerResponse($com);
@@ -1579,6 +1599,15 @@ sub printGcode {
          foreach my $t (split(/,/,$conf{toolmap})) {
             my($a,$b) = split(/[:=]/,$t);
             last if($l =~ s/$a/$b/);
+         }
+         $l =~ s/\\n/\n/g;
+         if($l=~/\n/) {
+            foreach my $l_ (split(/\n/,$l)) {
+               print "$me: gcode change (toolmap): $l_\n" if($conf{verbose}>1 && !$conf{quiet});
+               printerSend($com,$l_."\n");
+               my($resp) = printerResponse($com,$l_);
+            }
+            next;
          }
          print "$me: gcode change (toolmap): $l\n" if($conf{verbose}>1 && !$conf{quiet});
       }
@@ -2421,10 +2450,37 @@ sub gconsole {
 # ---------------------------------------------------------------------------------------------------------------
 
 sub openSerial {
-   my($d) = @_;
+   my($d,$uuid) = @_;
    my $com;
 
-   if($d=~/^tcp:(\S+)/i) {       # -- tcp device?
+   $uuid = $uuid || $conf{machine_uuid};
+   
+   if($d=~/^auto/i) {            # -- help out via machine-uuid
+      if(!$conf{machine_uuid}) {
+         print "$me: ERROR: define machine-uuid in command-line or printer profile, otherwise machine cannot be found\n";
+         exit -1;
+      }
+      if($d=~/auto:([\w\.,]+)/) {    # -- extract hostname(s)
+         my $hs = $1;
+         foreach my $h (split(/,/,$hs)) {
+            my $p = 0;
+            while(tcpPing($h,3380+$p)) {
+               my $c = openSerial("tcp:$h:$p",$uuid);
+               return $c if($c);
+            }
+         }   
+      } else {                      # -- probe locally only
+         my $p = 0;
+         while(-e "/dev/ttyUSB$p") {     # -- local
+            my $c = openSerial("/dev/ttyUSB$p",$uuid);
+            return $c if($c);
+            $p++;
+         }
+      }
+      print "$me: ERROR: wasn't able to find machine with uuid:$conf{machine_uuid}\n";
+      exit -1;
+      
+   } elsif($d=~/^tcp:(\S+)/i) {       # -- tcp device?
       $d = $1;
       my $sdev = "/tmp/print3r-device-$d";
       $SIG{CHLD} = 'IGNORE';
@@ -2560,21 +2616,36 @@ sub openSerial {
    sleep 2;    # -- allow the board to (re)boot
    
    $process->{serial_backend} = $conf{serialif};
-   printerResponse($com,"M115\n",{timeout=>1, callback=>sub {
+   printerResponse($com,"M115\n",{timeout=>1.5, callback=>sub {
       my($m) = @_;
       # -- slurp manifest ...
    }});
    
-   if(0) {        # -- metadata like UUID
+   if($uuid) {        # -- metadata like UUID
       my $gcode = "M115\n";
-      sleep 0.5;
+      sleep 0.8;
       printerSend($com,$gcode);
-      my($resp) = printerResponse($com,$gcode,{timeout=>1});
+      my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
       $printer->{uuid} = $1 if($resp=~/UUID\s*:\s*(\S+)/);
-      print "$me: UUID=$printer->{uuid}\n" if(!$conf{quiet} && $printer->{uuid});
+      if($printer->{uuid} && $printer->{uuid} ne $uuid) {
+         if($conf{device}) {
+            print "$me: WARN: UUID mismatch: '$conf{machine_uuid}' != '$printer->{uuid}', ignored\n";
+         } else {
+            return undef;        # -- no device=... set, therefore we are probing devives, and fail with 'undef'
+         }
+      } elsif(!$printer->{uuid}) {
+         print "$me: WARN: retrieve of machine-uuid (UUID) failed, ignored\n";
+      }
    }
    
    return $com;
+}
+
+sub tcpPing {
+   my($h,$p) = @_;
+   print "$me: probing $h:$p\n" if($conf{verbose}>1);
+   my $s = new IO::Socket::INET(PeerHost=>$h, PeerPort=>$p, Proto=>'tcp'); 
+   return $s && $s->close() || 0;
 }
    
 # ---------------------------------------------------------------------------------------------------------------
@@ -2590,3 +2661,72 @@ sub toJSON {
    return $j->encode($v);
 }
 
+# ----------------------------------------------------------------------------------------------------------------
+
+sub inline_args {
+   my($s) = @_;
+   return split(/,/,$s);
+}
+
+sub inline_function { 
+   my($n) = shift;
+   print "$me: calling inline_$n() with @_\n" if($conf{verbose});
+   @_ = eval("inline_$n(\@_)");
+   print "$me: => results: @_\n" if($conf{verbose});
+   print "$me: ERROR: inline_$n() failed: $@\n" if($@);
+   return "@_";
+}
+   
+sub inline_phases {
+   my($r,$n,$p,$opts) = @_;
+   my %v;
+   my(%m) = ('A'=>'a', 'B'=>'b', 'C'=>'c');
+
+   if($conf{multicolor_map}) {
+      (%m) = map { /(\w+)\s*[:=]\s*(\S+)/; ($1, $2); } split(/,/,$conf{multicolor_map});
+   }
+
+   if($n==2) {
+      $v{'a'} = 1 - $r;
+      $v{'b'} = $r;
+      return "A$v{$m{'B'}} B$v{$m{'B'}}";
+   } else {
+      if($p==3) {
+         $v{'a'} = $r < 1/2 ? 1-$r*2 : 0;
+         $v{'b'} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
+         $v{'c'} = $r >= 1/2 ? ($r-1/2)*2 : 0;
+      } else {
+         $v{'a'} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
+         $v{'b'} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
+         $v{'c'} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
+      }
+      return "A$v{$m{'A'}} B$v{$m{'B'}} C$v{$m{'C'}}";
+   }
+}
+
+sub inline_hsl2cmy {
+   my($h,$s,$l,$opts) = @_;
+   my $r = (($h+180)%360)/360;
+   my %v;
+   my(%m) = ('A'=>'c', 'B'=>'m', 'C'=>'y', 'D'=>'k', 'E'=>'w');
+
+   if($conf{multicolor_cmymap}) {
+      (%m) = map { /(\w+)\s*[:=]\s*(\S+)/; ($1, $2); } split(/,/,$conf{multicolor_cmymap});
+   }
+   $v{'c'} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
+   $v{'m'} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
+   $v{'y'} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
+   $v{'k'} = 0;
+   $v{'w'} = 0;
+   return "A$v{$m{'A'}} B$v{$m{'B'}} C$v{$m{'Y'}} D$v{$m{'K'}} E$v{$m{'W'}}";
+}
+
+sub inline_toolcolor {
+   my($n,$a,$b,$c,$d,$e) = @_;
+   $a = $a || 0;
+   $b = $b || 0;
+   $c = $c || 0;
+   $d = $d || 0;
+   $e = $e || 0;
+   return "M163 S0 P$a\nM163 S1 P$b\nM163 S2 P$c\nM163 S3 P$d\nM163 S4 P$e\nM164 S$n\n";
+}
