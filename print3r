@@ -471,7 +471,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --baudrate=<n>          set baudrate, default: $conf{baudrate}
       --device=<d>            set device, default: $conf{device}
       --slicer=<slicer>       set slicer, default: $conf{slicer}
-                                 slic3r, slic3r-pe, cura-legacy, cura
+                                 slic3r, slic3r-pe, prusa, cura-legacy, cura
       --printer=<name>        config of printer, default: $conf{printer}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command

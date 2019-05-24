@@ -2,7 +2,7 @@
 
 ## Introduction
 
-**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, CuraEngine, CuraEngine-Legacy).
+**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, PrusaSlicer CuraEngine, CuraEngine-Legacy).
 
 ### Examples
 ```
@@ -79,7 +79,7 @@ Print3r (print3r) 0.2.0 USAGE: [<options>] <cmd> <file1> [<...>]
       --baudrate=<n>          set baudrate, default: 115200
       --device=<d>            set device, default: /dev/ttyUSB0
       --slicer=<slicer>       set slicer, default: slic3r
-                                 slic3r, slic3r-pe, cura-legacy, cura
+                                 slic3r, slic3r-pe, prusa, cura-legacy, cura
       --printer=<name>        config of printer, default: default
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
