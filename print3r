@@ -11,7 +11,8 @@
 #  - printing .scad, .stl, .amf, .obj and .gcode
 #
 # History:
-# 2019/05/24: 0.2.5: 0.2.5: preliminary slicer=prusa support, additional inline functions support for gcode transformation: &toolcolor(n,a,b,c,d,e), &hsl2cmy(h,s,l), &phases(n=2|3,p=3|4)
+# 2019/05/28: 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support
+# 2019/05/24: 0.2.5: preliminary slicer=prusa support, additional inline functions support for gcode transformation: &toolcolor(n,a,b,c,d,e), &hsl2cmy(h,s,l), &phases(n=2|3,p=3|4)
 # 2019/04/10: 0.2.3: support for '--prepend_gcode=...' for start-gcode addition, and '--layer-gcode=...'
 # 2019/03/19: 0.2.2: support for 'skirts', 'brims' and 'rafts', 'support' and 'seam' slicer-independent
 # 2018/12/03: 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
@@ -43,7 +44,7 @@ use IO::Socket::INET;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.2.5';
+my $VERSION = '0.2.6.d';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -849,10 +850,12 @@ sub renderGcode {
       print "$me: WARN: you can only render .gcode files but not <$fn>, skipped\n";
       return;
    }
+   
+   $fn = processGcode($fn);
+   
    my $fh;
    if(!open($fh,"<",$fn)) {
-      print "me: ERROR: <$fn> not found, abort.\n";
-      exit -1;
+      error("<$fn> not found, abort.");
    }
    
    seek($fh,4096,-1);         # -- try to parse end of .gcode from slic3r to pick up metadata
@@ -1078,6 +1081,12 @@ sub slicePart {
    if(!ref($fn) && $fn=~/\.(\w+)$/ && !$sliceExtSupported{lc($1)}) {
       print "$me: WARN: you can only slice .stl, .amf, .obj or .3mf files but not <$fn>, skipped\n";
       return;
+   }
+   
+   if(1) {     # -- check existence of all file(s)
+      foreach my $f (ref($fn)?@$fn:$fn) {
+         error("cannot slice '$f': file not found") if(!-e $f);
+      }
    }
    my $tmp = "/tmp/print3r-$$.gcode";
    
@@ -1411,10 +1420,110 @@ sub slicePart {
       foreach my $l (split(/\n/,$out)) {
          print "$me: '$l'\n";
       }
-      exit;
+      exit -1;
+   }
+   if(!-e $conf{output}) {
+      error("slicer [$conf{slicer}] created no gcode, abort.");
    }
    printf ", filament usage %.2fm",$process->{filament_used}/1000 if($process->{filament_used} && !$conf{quiet});
    print ", done.\n" unless($conf{quiet});
+}
+
+sub processGcodeLine {
+   my($l) = @_;
+
+   $process->{tool} = $1 if($l=~/^T(\d+)/);
+
+   if($conf{verbose}>1 && !$conf{quiet}) {
+      print "\tprocess:\n";
+      foreach my $k (sort keys %$process) {
+         print "\t\t$k = '$process->{$k}'\n";
+      }
+   }
+   if($l=~/^T\d+/ && $conf{toolmap}) {       # -- only map tool select (but not /M182 T\d+/)
+      if(1) {
+         foreach my $t (split(/,/,$conf{toolmap})) {        # -- simple toolmap
+            my($a,$b,$c) = split(/[:=]/,$t);
+            if($l =~ s/$a/$b/) {
+               print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+               last;             # -- only one replacement
+            }
+         }
+      } else {
+         my %cnt;                                           # -- FUTURE: sophisticated toolmap with conditions ($c = "once" || "always")
+         foreach my $t (split(/,/,$conf{toolmap})) {
+            my($a,$b,$c) = split(/[:=]/,$t);
+            if($l =~ /$a/ && ($c && $c eq 'once' && $cnt{$a} < 1)) {
+               if($l =~ s/$a/$b/) {
+                  print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+                  $cnt{$a}++;
+               }
+            }
+         }
+      }
+   }
+   if($l=~/(^|\n)T\d+/ && $conf{toolremap}) {    # -- additional tool (re)mapping
+      # -- we implement a two step re-mapping, this way the order of mapping doesn't matter
+      my $p = "XX0A";                            # -- pattern which unlikely is used anywhere
+      my $n = 0;
+      my %rep;
+      foreach my $t (split(/,/,$conf{toolremap})) {
+         my($a,$b) = split(/[:=]/,$t);
+         if($l =~ s/$a/$p$n/gm) {
+            #print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+            $rep{$a} = "$p$n";
+            $n++;
+         }
+      }
+      $n = 0;
+      foreach my $t (split(/,/,$conf{toolremap})) {
+         my($a,$b) = split(/[:=]/,$t);
+         if($rep{$a} && $l =~ s/$rep{$a}/$b/gm) {
+            print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+            $n++;
+         }
+      }
+   }
+   if($conf{toolchange_gcode}) {
+   }
+
+   # -- short lines but are quite powerful:
+   $l =~ s/\$\{([^\}]+)\}/defined $conf{$1} ? $conf{$1} : $process->{$1}/eg;   # -- replace variables "${var}" forcefully (setting or live variable)
+   $l =~ s/\{([^\}]+)\}/eval($1)/eg;                                           # -- eval expressions "{expr}" forcefully
+   if($@) {
+      print STDERR "$me: WARN: eval in '$l' failed: $@\n";
+   }   
+   $l =~ s/&(\w+)\(([^\)]+)\)/inline_function($1,inline_args("$2"))/eg;    # -- call functions
+   if($@) {
+      print STDERR "$me: WARN: inline function in '$l' failed: $@\n";
+   }   
+   $l =~ s/\\n/\n/g;
+   $l .= "\n" unless($l=~/\n$/);       # -- ensure "\n" at the end (always)
+   return $l;
+}
+
+sub processGcode {          # -- NOTE: THIS WON'T WORK YET: processGcodeLine() requires live update of process->{} variables (to be parsed from existing Gcode)
+   my($fn) = @_;
+
+   if(0 && ($conf{toolmap} || $conf{layer_gcode} || $conf{position_gcode})) {
+      my $tmp = "/tmp/print3r-$$-gcode-process.gcode";
+      print ", post-process gcode" unless($conf{quiet});
+      if(open(my $fhr,"<",$fn)) {
+         if(open(my $fhw,">",$tmp)) {
+            while(<$fhr>) {
+               my $l = processGcodeLine($_);
+               print $fhw $l;
+            }
+         } else {
+            error("processGcode: could not write '$tmp'");
+         }
+      } else {
+         error("processGcode: could not read '$fn'");
+      }
+      push(@rm,$tmp);
+      $fn = $tmp;
+   } 
+   return $fn;
 }
 
 sub printGcode {
@@ -1424,6 +1533,8 @@ sub printGcode {
    
    my $st = time();
    my $st_e; 
+
+   $fn = processGcode($fn);
    
    open(my $fh,"<",$fn);
    return if(!$fh);
@@ -1444,6 +1555,7 @@ sub printGcode {
 
    my $pos = 0;
    my $pos_tot = (stat($fn))[7];
+   my $pos_t = 'abs';
    my $lcur_z;
    my $cur_z = 0;
    my $tot_e = 0;
@@ -1479,33 +1591,31 @@ sub printGcode {
    my $lst;
 
    my $layerScript = sub {
-      foreach my $l (split(/(\\n|;)/,$conf{layer_gcode})) {
-         my $p;
-         $p->{layer_current} = $process->{layer_current};
-         $p->{layer_total} = $process->{layer_total};
-         $p->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
-         $p->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
-         my $r = 1/$process->{layer_total} * $process->{layer_current};
-         $p->{a2} = 1-$r;
-         $p->{b2} = $r;
-         $p->{a3} = $r < 1/2 ? 1-$r*2 : 0;
-         $p->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
-         $p->{c3} = $r >= 1/2 ? ($r-1/2)*2 : 0;
-         $p->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
-         $p->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
-         $p->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
-         $l =~ s/\$\{([^\}]+)\}/$p->{$1}/g;     # -- replace variables "${var}"
-         $l =~ s/\{([^\}]+)\}/eval($1)/eg;      # -- eval expressions "{expr}"
-         $l =~ s/&(\w+)\(([^\)]+)\)/inline_function($1,inline_args("$2"))/eg;    # -- call functions
-         print "$me: gcode insert (layer-gcode): $l\n" if($conf{verbose}>1 && !$conf{quiet});
-         printerSend($com,$l."\n");
-         printerResponse($com);
+      $process->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
+      $process->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
+      my $r = 1/$process->{layer_total} * $process->{layer_current};
+      $process->{a2} = 1-$r;
+      $process->{b2} = $r;
+      $process->{a3} = $r < 1/2 ? 1-$r*2 : 0;
+      $process->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
+      $process->{c3} = $r >= 1/2 ? ($r-1/2)*2 : 0;
+      $process->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;                         # 1..0..0..1
+      $process->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;                       # 0..1..0..0
+      $process->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
+      return $conf{layer_gcode};
+      if(0) {
+         foreach my $l_ (split(/(\\n|;)/,$conf{layer_gcode})) {
+            $l_ = processGcodeLine($l_);
+            print "$me: gcode insert (layer-gcode): $l_\n" if($conf{verbose}>1 && !$conf{quiet});
+            printerSend($com,$l_."\n");
+            printerResponse($com);
+         }
       }
    };
    
    my($min,$max,$sz,$cp);
    
-   my $posScript = sub {
+   my $positionScript = sub {
       my($rx,$ry,$rz) = ($cp->{x}/$sz->{x},$cp->{y}/$sz->{y},$cp->{z}/$sz->{z});
       my $r = atan2($ry-0.50001,$rx-0.50001) / (2*pi);
       my($a,$b,$c);
@@ -1518,7 +1628,7 @@ sub printGcode {
       printerResponse($com);
    };
    
-   if($conf{colorxy}) {
+   if($conf{position_gcode}) {
       $min->{x} = $min->{y} = $min->{z} = 1e38;
       $max->{x} = $max->{y} = $max->{z} = -1e38;
       while(<$fh>) {
@@ -1546,6 +1656,8 @@ sub printGcode {
       print "$me: extruding space: +$min->{x}+$min->{y} $sz->{x}x$sz->{y}x$sz->{z}\n" unless($conf{quiet});
       seek($fh,0,0);
    }
+
+   $process->{layer_current} = 0;
    
    while(<$fh>) {
       my $l = $_;
@@ -1565,8 +1677,14 @@ sub printGcode {
       # -- rudimentary catch layer changes, if small change then it's a layer change
       $cur_z = $1 if($l=~/^G[01] .*Z(\S+)/);
       $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
-      $tot_e = $cur_e if($l=~/^G92 E0/);
-      $status = "printing", $cur_e = $tot_e + $1, $st_e = $st_e ? $st_e : time() if($l=~/G1.*E([\d\.]+)/);
+      $pos_t = 'abs' if(/^G90/); 
+      $pos_t = 'rel' if(/^G91/); 
+      if($pos_t eq 'abs') {
+         $tot_e = $cur_e if($l=~/^G92 E0/);
+         $status = "printing", $cur_e = $tot_e + $1*1, $st_e = $st_e ? $st_e : time() if($l=~/G1.*E(\-?[\d\.]+)/);
+      } else {
+         $status = "printing", $cur_e += $1*1, $st_e = $st_e ? $st_e : time() if($l=~/G1.*E(\-?[\d\.]+)/);
+      }
       $status = "heating" if($l=~/^M109/);
       
       # -- status line
@@ -1581,7 +1699,7 @@ sub printGcode {
          }
       }
 
-      if($conf{colorxy} && $l =~ /^G1\s+(\S.+)/) {
+      if($conf{position_gcode} && $l =~ /^G1\s+(\S.+)/) {
          my $c = $1;
          my $e = 0;
          foreach my $p (split(/ /,$c)) {
@@ -1589,28 +1707,47 @@ sub printGcode {
             $cp->{lc($a)} = $u - $min->{lc($a)} if($a);
             $e++ if($a eq 'E');
          }
-         &$posScript() if($e);
+         &$positionScript() if($e);
       }
       $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
-      $process->{layer_current} = $1, $conf{layer_gcode} ? &$layerScript() : 0 if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/);
+
+      if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/) {
+         $process->{layer_current} = $1;
+         &$layerScript();
+         $l = $conf{layer_gcode} if($conf{layer_gcode});
+      }
 
       next if($l=~/^;/ || $l=~/^\s*$/);     # -- comments or empty lines are not sent
 
-      if($l=~/^T\d+/ && $conf{toolmap}) {
-         foreach my $t (split(/,/,$conf{toolmap})) {
-            my($a,$b) = split(/[:=]/,$t);
-            last if($l =~ s/$a/$b/);
-         }
-         $l =~ s/\\n/\n/g;
-         if($l=~/\n/) {
-            foreach my $l_ (split(/\n/,$l)) {
-               print "$me: gcode change (toolmap): $l_\n" if($conf{verbose}>1 && !$conf{quiet});
-               printerSend($com,$l_."\n");
-               my($resp) = printerResponse($com,$l_);
+      if(0 && $l=~/^T\d+/ && $conf{toolmap}) {
+         foreach my $t (split(/:/,$conf{toolmap})) {
+            my($a,$b) = split(/[=]/,$t);
+            if($l =~ s/$a/$b/) {
+               print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+               last;
             }
-            next;
+         }
+         print " in: '$l'\n";
+         $l = processGcodeLine($l);
+         print "out: '$l'\n";
+         if(0) {
+            $l =~ s/\\n/\n/g;
+            if($l=~/\n/) {
+               foreach my $l_ (split(/\n/,$l)) {
+                  print "$me: gcode change (toolmap): $l_\n" if($conf{verbose}>1 && !$conf{quiet});
+                  printerSend($com,$l_."\n");
+                  my($resp) = printerResponse($com,$l_);
+               }
+               next;
+            } else {
+               $l .= "\n";
+            }
          }
          print "$me: gcode change (toolmap): $l\n" if($conf{verbose}>1 && !$conf{quiet});
+      } else {
+         #print " in: '$l'\n";
+         $l = processGcodeLine($l);
+         #print " out: '$l'\n";
       }
       
       if(0 && $l=~/\$\{(\w+)\}/) {    # -- any variable to replace?
@@ -1620,31 +1757,34 @@ sub printGcode {
       
       print "send: '$l'" if($conf{verbose});
 
-      printerSend($com,$l);
-
-      my($resp) = printerResponse($com,$l,{callback=>sub {
-         my($mesg,$com,$cmd) = @_;
-         my $now = (time()-$st)/60;
-         if(!$conf{quiet} && $status ne 'printing') {
-            # ... e.g. parse while heating up the temperature(s)
-            # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
-            if($status eq 'heating') {
-               if($mesg=~/(T:[\d\.]+ \/[\d\.]+) (B:[\d\.]+ \/[\d\.]+)/) {
-                  printf "$me: print: %s (%s, %s): %dh %02dm elapsed\r",$status,$1,$2,int($now/60),$now%60;
+      foreach my $l_ (split(/\n/,$l)) {         # -- we might have multiple lines (as result of processGcodeLine())
+         $l_ .= "\n";
+         $process->{tool_current} = $process->{tool} = $1 if($l_=~/^T(\d+)/);
+         printerSend($com,$l_);
+         my($resp) = printerResponse($com,$l_,{callback=>sub {
+            my($mesg,$com,$cmd) = @_;
+            my $now = (time()-$st)/60;
+            if(!$conf{quiet} && $status ne 'printing') {
+               # ... e.g. parse while heating up the temperature(s)
+               # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
+               if($status eq 'heating') {
+                  if($mesg=~/(T:[\d\.]+ \/[\d\.]+) (B:[\d\.]+ \/[\d\.]+)/) {
+                     printf "$me: print: %s (%s, %s): %dh %02dm elapsed\r",$status,$1,$2,int($now/60),$now%60;
+                  } else {
+                     ;
+                  }
                } else {
-                  ;
+                  printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
                }
-            } else {
-               printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
             }
-         }
-      }});
-   
+         }});
+      }
+      
       if(time()-$lst>3) {           # -- update printer display
-         printerSend($com,sprintf("M117 %d%% eta %s l#%d\n",100*$pos/$pos_tot,
+         printerSend($com,sprintf("M117 %d%% eta %s l#%d%s\n",100*$pos/$pos_tot,
             #$eta > 36*60 ? sprintf("%.1fdy",$eta/60/24) : $eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m",
             $eta_e ? ($eta_e > 36*60 ? sprintf("%.1fdy",$eta_e/60/24) : $eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
-            $layer));
+            $layer,defined $process->{tool}?" T".$process->{tool}:""));
          printerResponse($com);
          #printerSend($com,"M31\n");
          #printerResponse($com);
@@ -2168,8 +2308,7 @@ sub partsArrange {         # -- arrange multiple parts (same or different sizes)
       foreach my $p (@ps) {
          $p = partTranslate($p,[-$p->{min}->[0],-$p->{min}->[1],0]);    # -- align for packing
          if($p->{size}->[0] > $c->{build}->{x} || $y+$p->{size}->[1] > $c->{build}->{y}) {
-            print "\n$me: ERROR: too many parts on build plate, exceeds its dimension\n";
-            exit -1;
+            error("too many parts on build plate, exceeds its dimension");
          }
          $p0 = partMerge($p0,partTranslate($p,[$x,$y,0]));
          $x += $p->{size}->[0]+$s;
@@ -2458,8 +2597,7 @@ sub openSerial {
    
    if($d=~/^auto/i) {            # -- help out via machine-uuid
       if(!$conf{machine_uuid}) {
-         print "$me: ERROR: define machine-uuid in command-line or printer profile, otherwise machine cannot be found\n";
-         exit -1;
+         error("define machine-uuid in command-line or printer profile, otherwise machine cannot be found");
       }
       if($d=~/auto:([\w\.,]+)/) {    # -- extract hostname(s)
          my $hs = $1;
@@ -2478,8 +2616,7 @@ sub openSerial {
             $p++;
          }
       }
-      print "$me: ERROR: wasn't able to find machine with uuid:$conf{machine_uuid}\n";
-      exit -1;
+      error("wasn't able to find machine with uuid:$conf{machine_uuid}");
       
    } elsif($d=~/^tcp:(\S+)/i) {       # -- tcp device?
       $d = $1;
@@ -2630,7 +2767,7 @@ sub openSerial {
       $printer->{uuid} = $1 if($resp=~/UUID\s*:\s*(\S+)/);
       if($printer->{uuid} && $printer->{uuid} ne $uuid) {
          if($conf{device}) {
-            print "$me: WARN: UUID mismatch: '$conf{machine_uuid}' != '$printer->{uuid}', ignored\n";
+            error("UUID mismatch: '$conf{machine_uuid}' != '$printer->{uuid}', abort\n");
          } else {
             return undef;        # -- no device=... set, therefore we are probing devives, and fail with 'undef'
          }
@@ -2729,5 +2866,11 @@ sub inline_toolcolor {
    $c = $c || 0;
    $d = $d || 0;
    $e = $e || 0;
+   my $f = 1.0;
+   $a *= $f;
+   $b *= $f;
+   $c *= $f;
+   $d *= $f;
+   $e *= $f;
    return "M163 S0 P$a\nM163 S1 P$b\nM163 S2 P$c\nM163 S3 P$d\nM163 S4 P$e\nM164 S$n\n";
 }
