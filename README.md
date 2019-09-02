@@ -2,7 +2,7 @@
 
 ## Introduction
 
-**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, PrusaSlicer CuraEngine, CuraEngine-Legacy).
+**Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .scad) to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, PrusaSlicer, CuraEngine (3.5.0), CuraEngine4 (4.2.0 or later) , CuraEngine-Legacy).
 
 ### Examples
 ```
@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.2.8: CuraEngine-4.2.0 support via `--slicer=cura4`, see wiki for install instructions
 - 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support `--toolmap` & `--toolremap`
 - 0.2.5: preliminary `--slicer=prusa` support, additional inline functions support for gcode transformation: `&toolcolor(n,a,b,c,d,e)`, `&hsl2cmy(h,s,l)`, `&phases(n=2|3,p=3|4)`
 - 0.2.3: support for `--prepend_gcode=...` for start-gcode addition, and `--layer-gcode=...`
