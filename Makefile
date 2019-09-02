@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.2.6
+VERSION=0.2.7
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share
@@ -32,6 +32,9 @@ edit::
 
 backup::
 	cd ..; tar cfz ${NAME}-${VERSION}.tar.gz "--exclude=*/slicers/*" ${NAME}; mv ${NAME}-${VERSION}.tar.gz ~/Backup; scp ~/Backup/${NAME}-${VERSION}.tar.gz backup:Backup/
+
+backup-settings::
+	cd ~/; tar cfz ${NAME}-Config-`date +%F`.tar.gz .config/print3r; mv ${NAME}-Config-`date +%F`.tar.gz ~/Backup/; scp ~/Backup/${NAME}-Config-`date +%F`.tar.gz backup:Backup/
 
 change::
 	git commit -am "..."

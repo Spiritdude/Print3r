@@ -8,9 +8,10 @@
 #  Command line tool to print parts to 3d printers without GUI
 #  - slicing with slic3r backend
 #  - printing via USB
-#  - printing .scad, .stl, .amf, .obj and .gcode
+#  - printing .scad, .stl, .amf, .obj, .off and .gcode
 #
 # History:
+# 2019/06/09: 0.2.7: cleaner read{STL,AMF,OBJ,OFF}(), and partTransform(), support of multiple volumes/colors/material in AMF
 # 2019/05/28: 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support '--toolmap' & '--toolremap'
 # 2019/05/24: 0.2.5: preliminary slicer=prusa support, additional inline functions support for gcode transformation: &toolcolor(n,a,b,c,d,e), &hsl2cmy(h,s,l), &phases(n=2|3,p=3|4)
 # 2019/04/10: 0.2.3: support for '--prepend_gcode=...' for start-gcode addition, and '--layer-gcode=...'
@@ -44,7 +45,7 @@ use IO::Socket::INET;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.2.6.d';
+my $VERSION = '0.2.8';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -75,8 +76,9 @@ my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=
    'phase2_min'=>1,'phase3_min'=>1);
 
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
+my %sliceExtExtraSupported = ('off'=>1);
 
-my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa3d','prusa'=>'prusa-slicer','cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine');
+my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa3d','prusa'=>'prusa-slicer','cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine','cura4'=>'CuraEngine4');
 
 my $printer;
 $printer->{build}->{x} = 200;
@@ -277,6 +279,7 @@ if($cmd eq 'analyze') {          # -- not yet
                print "$fn:\n";
                print "   size: ",toJSON($i->{size},{pretty=>0}),"\n";
                print "   pos: ",toJSON($i->{min},{pretty=>0}),"\n";
+               print "   vertices: ",scalar @{$i->{vertices}},"\n";
                print "   facets: ",scalar @{$i->{facets}},"\n";
             }
          }
@@ -289,14 +292,14 @@ if($cmd eq 'analyze') {          # -- not yet
    header();
    foreach my $fn (@f) {
       $conf{output} = $fn, $conf{output} =~ s/\.[^\/\.]$/.gcode/ if(!defined $conf{output});
-      if($fn=~/\.scad$/i || $conf{scad}) {
+      if($fn=~/\.scad$/i || $conf{scad} || $fn=~/^#scad\s*/) {
          my $c_fn = $conf{output};
          $conf{output} = "/tmp/print3r-$$.stl";
          scadToSTL($fn,\%conf);
          $fn = $conf{output};
          $conf{output} = $c_fn;
          push(@rm,$fn);
-      } elsif($fn=~/\.sccad$/i || $conf{sccad}) {
+      } elsif($fn=~/\.sccad$/i || $conf{sccad} || $fn=~/^#sscad\s*/) {
          my $c_fn = $conf{output};
          $conf{output} = "/tmp/print3r-$$.stl";
          sccadToSTL($fn,\%conf);
@@ -305,6 +308,8 @@ if($cmd eq 'analyze') {          # -- not yet
          push(@rm,$fn);
       }
       slicePart($fn,\%conf);
+      my $fno = processGcode($conf{output});
+      rename($fno,$conf{output}) if($fno ne $conf{output});
    }
    
 } elsif($cmd eq 'print' || $cmd eq 'render' || $cmd eq 'preview') {
@@ -316,18 +321,26 @@ if($cmd eq 'analyze') {          # -- not yet
    foreach my $fn (@f) {
       $o = $fn, $o =~ s/\.\w+$/.png/ unless($o);
 
-      if($fn=~/\.scad$/i || $conf{scad}) {
+      if($fn=~/\.scad$/i || $conf{scad} || $fn=~/^#scad\s*/) {
          $conf{output} = "/tmp/print3r-$$-$n.stl";
          scadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
-      } elsif($fn=~/\.sccad$/i || $conf{sccad}) {
+      } elsif($fn=~/\.sccad$/i || $conf{sccad} || $fn=~/^#scad\s*/) {
          $conf{output} = "/tmp/print3r-$$-$n.stl";
          sccadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
       }
 
+      if($fn=~/\.(\w+)$/ && $sliceExtExtraSupported{lc($1)}) {
+         my $p = partRead($fn);
+         my $tmp = "/tmp/print3r-extra-$$-$n.".($p->{volumes}?"amf":"stl");
+         partWrite($tmp,$p);
+         $fn = $tmp;
+         push(@rm,$tmp);
+      }
+      
       if($fn=~/\.(\w+)$/ && $sliceExtSupported{lc($1)}) {
          #$conf{output} = "/tmp/print3r-$$-$n.gcode";
          #slicePart($fn,\%conf);
@@ -558,7 +571,7 @@ sub scadToSTL {
    my(%conf) = %{@_[0]};
    my $fno;
    
-   if($conf{scad}) {       # -- any code to execute as well? $fn isn't a filename but code itself
+   if($conf{scad} || $fn=~s/^#scad\s*//) {       # -- any code to execute as well? $fn isn't a filename but code itself
       my $tmp = "/tmp/$me-$$-exec.scad";
       open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
       foreach my $l (split(/[,\:]/,$conf{scadlib})) {
@@ -603,7 +616,7 @@ sub sccadToSTL {
    my(%conf) = %{@_[0]};
    my $fno;
    
-   if($conf{sccad}) {       # -- any code to execute as well? $fn isn't a filename but code itself
+   if($conf{sccad} || $fn=~s/^#sscad\s*//) {       # -- any code to execute as well? $fn isn't a filename but code itself
       my $tmp = "/tmp/$me-$$-exec.sccad";
       open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
       foreach my $l (split(/[,\:]/,$conf{sccadlib})) {
@@ -851,7 +864,7 @@ sub renderGcode {
       return;
    }
    
-   $fn = processGcode($fn);
+   # $fn = processGcode($fn);
    
    my $fh;
    if(!open($fh,"<",$fn)) {
@@ -1078,6 +1091,13 @@ sub slicePart {
    my(%conf) = %{@_[0]};
    my $st = time();
    
+   if(!ref($fn) && $fn=~/\.(\w+)$/ && $sliceExtExtraSupported{lc($1)}) {
+      my $p = partRead($fn);
+      my $tmp = "/tmp/print3r-extra-$$.stl";
+      writePart($tmp,$p);
+      push(@rm,$tmp);
+      $fn = $tmp;
+   }
    if(!ref($fn) && $fn=~/\.(\w+)$/ && !$sliceExtSupported{lc($1)}) {
       print "$me: WARN: you can only slice .stl, .amf, .obj or .3mf files but not <$fn>, skipped\n";
       return;
@@ -1108,7 +1128,7 @@ sub slicePart {
          $p = partTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
          $p = partRecenter($p,[0,0,-1]) if($conf{slicer}=~/cura/);    # -- cura needs part to reside z=0
          printf ", size %.1fx%.1fx%.1f",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
-         my $tmp = "/tmp/print3r-$$-0-$n.stl";
+         my $tmp = "/tmp/print3r-$$-0-$n.".($p->{volumes}?"amf":"stl");
          partWrite($tmp,$p);
          push(@fx,$tmp);
          $n++;
@@ -1139,7 +1159,7 @@ sub slicePart {
             my $pn = partTranslate(partRecenter($p,[1,1,0]),[($w+5)*($i%$xn),($h+5)*int($i/$xn),0]);
             partMerge($p0,$pn);
          }
-         my $tmp = "/tmp/print3r-$$-ar-$j.stl";
+         my $tmp = "/tmp/print3r-$$-ar-$j.".($p->{volumes}?"amf":"stl");
          partWrite($tmp,$p0);
          push(@fx,$tmp);
          $j++;
@@ -1155,7 +1175,7 @@ sub slicePart {
          push(@pa,partRead($f));      # -- a bit wasteful, but we don't necessarly have read it already
       }
       my $p = partsArrange(@pa,$printer);
-      my $tmp = "/tmp/print3r-$$-ar.stl";
+      my $tmp = "/tmp/print3r-$$-ar.".($p->{volumes}?"amf":"stl");
       partWrite($tmp,$p);
       push(@rm,$tmp);
       $fn = $tmp;                                        # -- back to a single part
@@ -1177,7 +1197,7 @@ sub slicePart {
          }
          $x -= $printer->{build}->{x}/2, $y -= $printer->{build}->{y}/2 if($conf{slicer}=~/cura/);    # -- cura assumes 0,0 at center of plate
          $p = partTranslate($p,[int($x),int($y),0]);
-         my $tmp = "/tmp/print3r-$$-1-$n.stl";
+         my $tmp = "/tmp/print3r-$$-1-$n.".($p->{volumes}?"amf":"stl");
          partWrite($tmp,$p);
          push(@fx,$tmp);
          $n++;
@@ -1328,12 +1348,12 @@ sub slicePart {
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});
 
-   } else {                               # -- cura
+   } else {                               # -- cura & curax
       push(@a,"slice");
       #push(@a,"-p");    # -- progress
       push(@a,"-v");    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
-      push(@a,'-j',"$cpath/slicer/cura/fdmprinter.def.json");
+      push(@a,'-j',"$cpath/slicer/$conf{slicer}/fdmprinter.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
       #push(@a,'-j',$conf{printer}) if($conf{printer});
@@ -1342,7 +1362,7 @@ sub slicePart {
          #push(@a,"-e$n");        # -- doesn't work, throws error
          push(@a,"-s","extruder_nr=$n");
          my @ks;
-         if(open(my $fh,"<","$cpath/slicer/cura/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+         if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
             while(<$fh>) {
                chop; 
                if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
@@ -1484,6 +1504,12 @@ sub processGcodeLine {
          }
       }
    }
+
+   # -- update various variables (after toolmap & toolremap)
+   foreach (split(/\n/,$l)) {
+      $process->{tool_current} = $process->{tool} = $1 if(/^T(\d+)/);
+   }
+      
    if($conf{toolchange_gcode}) {
    }
 
@@ -1502,18 +1528,40 @@ sub processGcodeLine {
    return $l;
 }
 
-sub processGcode {          # -- NOTE: THIS WON'T WORK YET: processGcodeLine() requires live update of process->{} variables (to be parsed from existing Gcode)
+sub processGcode {     
    my($fn) = @_;
 
-   if(0 && ($conf{toolmap} || $conf{layer_gcode} || $conf{position_gcode})) {
+   if(1 && ($conf{toolmap} || $conf{layer_gcode} || $conf{position_gcode})) {
       my $tmp = "/tmp/print3r-$$-gcode-process.gcode";
-      print ", post-process gcode" unless($conf{quiet});
       if(open(my $fhr,"<",$fn)) {
-         if(open(my $fhw,">",$tmp)) {
+         if($conf{layer_gcode} && $conf{slicer}=~/slic3r/) {   # -- we need to find total count of layers
+            my @s = stat($fn);
+            my $p = $s[7] * 0.9;
+            $p = $s[7] < 2000 ? 0 : $p;
+            seek($fhr,$p,-1);
+            my $tail;
             while(<$fhr>) {
+               chop;
+               $process->{layer_total} = $1 if(/LAYER:(\d+)/);
+            }
+            seek($fhr,0,0);  
+            $process->{layer_total}++;          # -- count is +1 of last layer number (starts with 0)
+         }
+
+         if(open(my $fhw,">",$tmp)) {
+            $process->{layer_current} = 0;
+ 
+            while(<$fhr>) {
+               $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
+               if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/) {
+                  $process->{layer_current} = $1;
+                  layerScript(), $_ = $conf{layer_gcode} if($conf{layer_gcode});
+               }
                my $l = processGcodeLine($_);
                print $fhw $l;
             }
+            close $fhw;
+            close $fhr;
          } else {
             error("processGcode: could not write '$tmp'");
          }
@@ -1522,8 +1570,25 @@ sub processGcode {          # -- NOTE: THIS WON'T WORK YET: processGcodeLine() r
       }
       push(@rm,$tmp);
       $fn = $tmp;
+      print "\n" unless($conf{quiet});
    } 
    return $fn;
+}
+
+sub layerScript {
+   $process->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
+   $process->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
+   my $r = 1/$process->{layer_total} * $process->{layer_current};
+   $process->{a2} = 1-$r;                                # 1..0
+   $process->{b2} = $r;                                  # 0..1
+   $process->{a22} = $r < 1/2 ? 1-$r*2 : ($r-1/2)*2;     # 1..0..1
+   $process->{b22} = $r < 1/2 ? $r*2 : 1-($r-1/2)*2;     # 0..1..0
+   $process->{a3} = $r < 1/2 ? 1-$r*2 : 0;               # 1..0..0
+   $process->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;    # 0..1..0
+   $process->{c3} = $r >= 1/2 ? ($r-1/2)*2 : 0;          # 0..0..1
+   $process->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;                         # 1..0..0..1
+   $process->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;                       # 0..1..0..0
+   $process->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
 }
 
 sub printGcode {
@@ -1534,7 +1599,7 @@ sub printGcode {
    my $st = time();
    my $st_e; 
 
-   $fn = processGcode($fn);
+   # $fn = processGcode($fn);
    
    open(my $fh,"<",$fn);
    return if(!$fh);
@@ -1590,29 +1655,6 @@ sub printGcode {
    my $status = "init";
    my $lst;
 
-   my $layerScript = sub {
-      $process->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
-      $process->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
-      my $r = 1/$process->{layer_total} * $process->{layer_current};
-      $process->{a2} = 1-$r;
-      $process->{b2} = $r;
-      $process->{a3} = $r < 1/2 ? 1-$r*2 : 0;
-      $process->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
-      $process->{c3} = $r >= 1/2 ? ($r-1/2)*2 : 0;
-      $process->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;                         # 1..0..0..1
-      $process->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;                       # 0..1..0..0
-      $process->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
-      return $conf{layer_gcode};
-      if(0) {
-         foreach my $l_ (split(/(\\n|;)/,$conf{layer_gcode})) {
-            $l_ = processGcodeLine($l_);
-            print "$me: gcode insert (layer-gcode): $l_\n" if($conf{verbose}>1 && !$conf{quiet});
-            printerSend($com,$l_."\n");
-            printerResponse($com);
-         }
-      }
-   };
-   
    my($min,$max,$sz,$cp);
    
    my $positionScript = sub {
@@ -1628,7 +1670,7 @@ sub printGcode {
       printerResponse($com);
    };
    
-   if($conf{position_gcode}) {
+   if($conf{position_gcode}) {                        # -- FUTURE: any position-gcode? we need determine min/max to calculate relative x,y,z
       $min->{x} = $min->{y} = $min->{z} = 1e38;
       $max->{x} = $max->{y} = $max->{z} = -1e38;
       while(<$fh>) {
@@ -1713,7 +1755,7 @@ sub printGcode {
 
       if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/) {
          $process->{layer_current} = $1;
-         &$layerScript();
+         layerScript();
          $l = $conf{layer_gcode} if($conf{layer_gcode});
       }
 
@@ -1759,7 +1801,6 @@ sub printGcode {
 
       foreach my $l_ (split(/\n/,$l)) {         # -- we might have multiple lines (as result of processGcodeLine())
          $l_ .= "\n";
-         $process->{tool_current} = $process->{tool} = $1 if($l_=~/^T(\d+)/);
          printerSend($com,$l_);
          my($resp) = printerResponse($com,$l_,{callback=>sub {
             my($mesg,$com,$cmd) = @_;
@@ -1948,12 +1989,23 @@ sub readSTL {
       seek($fh,0,0);
       if($buff=~/facet/) {       # -- ascii
          my $v;
+         my %vx;                 # -- vertex cache as associative array "<x>,<y>,<z>"
+         my $vxn = 0;
          my $n = 0;
          while(<$fh>) {
             chop;
             push(@$v,[split(/ /,$1)]) if(/vertex (\S.+)/);
             if(/endloop/) {
-               push(@{$p->{facets}},$v);
+               my @px;
+               $px[0] = join(",",@{$v->[0]});
+               $px[1] = join(",",@{$v->[1]});
+               $px[2] = join(",",@{$v->[2]});
+               $vx{$px[0]} = $vxn++ unless(defined $vx{$px[0]});
+               $vx{$px[1]} = $vxn++ unless(defined $vx{$px[1]});
+               $vx{$px[2]} = $vxn++ unless(defined $vx{$px[2]});
+               #push(@{$p->{facets}},$v);
+               @px = map { $vx{$_} } @px;
+               push(@{$p->{facets}},\@px);
                for(my $i=0; $i<3; $i++) {
                   for(my $j=0; $j<3; $j++) {
                      # -- update min/max
@@ -1964,6 +2016,11 @@ sub readSTL {
                $v = [], $n++;
             }
          }
+         foreach my $q (sort { $vx{$a}-$vx{$b} } keys %vx) {
+            my($x,$y,$z) = split(/,/,$q);
+            push(@{$p->{vertices}},[$x*1,$y*1,$z*1]);
+         }
+         #print toJSON($p);
          print "$fn: $n facets\n" if($conf{verbose});
       } else {                   # -- binary
          my $n;
@@ -1972,6 +2029,8 @@ sub readSTL {
          $n = unpack('i',$n);
          print "$fn: $n facets\n" if($conf{verbose});
          my $fu = 'f f f';
+         my %vx;
+         my $vxn = 0;
          for(my $i=0; $i<$n; $i++) {
             my($nr,$v1,$v2,$v3,$at);
             read($fh,$nr,4*3);
@@ -1985,7 +2044,19 @@ sub readSTL {
             push(@$v,[unpack($fu,$v2)]);
             push(@$v,[unpack($fu,$v3)]);
             #print " @{@v[0]} @{@v[1]} @{@v[2]}\n";
-            push(@{$p->{facets}},$v);
+            #push(@{$p->{facets}},$v);
+               
+            my @px;
+            $px[0] = join(",",@{$v->[0]});
+            $px[1] = join(",",@{$v->[1]});
+            $px[2] = join(",",@{$v->[2]});
+            $vx{$px[0]} = $vxn++ unless(defined $vx{$px[0]});
+            $vx{$px[1]} = $vxn++ unless(defined $vx{$px[1]});
+            $vx{$px[2]} = $vxn++ unless(defined $vx{$px[2]});
+            #push(@{$p->{facets}},$v);
+            @px = map { $vx{$_} } @px;
+            push(@{$p->{facets}},\@px);
+               
             for(my $i=0; $i<3; $i++) {
                for(my $j=0; $j<3; $j++) {
                   # -- update min/max
@@ -1993,6 +2064,10 @@ sub readSTL {
                   $max[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]>$max[$j]);
                }
             }
+         }
+         foreach my $q (sort { $vx{$a}-$vx{$b} } keys %vx) {
+            my($x,$y,$z) = split(/,/,$q);
+            push(@{$p->{vertices}},[$x*1,$y*1,$z*1]);
          }
       }
       close $fh;
@@ -2014,8 +2089,20 @@ sub writeSTL {
       print $fh "solid\n";
       foreach my $f (@{$p->{facets}}) {
          print $fh "facet normal 0 0 0\n\touter loop\n";
-         foreach my $v (@$f) {
-            print $fh "\t\tvertex ",join(" ",@$v),"\n";
+         if(0) {
+            foreach my $v (@$f) {
+               print $fh "\t\tvertex ",join(" ",@$v),"\n";
+            }
+         } else {
+            foreach my $vi ($f) {
+               for(my $i=0; $i<3; $i++) {
+                  if(!$p->{vertices}->[$vi->[$i]]) {
+                     error("malformed geometry, cannot export faces: ".toJSON($vi->[$i]));
+                  }
+                  my $vp = $p->{vertices}->[$vi->[$i]] ;
+                  print $fh "\t\tvertex ",join(" ",@$vp),"\n";
+               }
+            }
          }
          print $fh "\tendloop\nendfacet\n";
       }
@@ -2055,10 +2142,15 @@ sub readAMF {
                }
                push(@vs,\@p);
             }
+            $p->{vertices} = \@vs;
+            my $vn = 0;
             foreach my $t (ref($m->{volume})eq'ARRAY'?@{$m->{volume}}:$m->{volume}) {
                foreach my $c (@{$t->{triangle}}) {
-                  push(@{$p->{facets}},[$vs[$c->{v1}],$vs[$c->{v2}],$vs[$c->{v3}]]);
+                  #push(@{$p->{facets}},[$vs[$c->{v1}],$vs[$c->{v2}],$vs[$c->{v3}]]);
+                  push(@{$p->{facets}},[$c->{v1},$c->{v2},$c->{v3}]);
+                  push(@{$p->{volumes}->[$vn]},$#{$p->{facets}});
                }
+               $vn++;
             }
          }
       }
@@ -2071,6 +2163,56 @@ sub readAMF {
    } else {
       print STDERR "$me: only .amf supported, abort.\n";
       exit;
+   }
+}
+
+sub writeAMF {
+   my($fn,$p) = @_;
+   print ", amf writing <$fn>\n" if($conf{verbose});
+
+   if(open(my $fh,">",$fn)) {
+      print $fh "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+      print $fh "<amf unit=\"mm\" version=\"1.1\">\n";
+      print $fh " <metadata type=\"exporter\">$me $VERSION</metadata>\n";
+      print $fh " <object id=\"1\">\n";
+      print $fh "  <mesh>\n";
+      print $fh "   <vertices>\n";
+      foreach my $v (@{$p->{vertices}}) {
+         print $fh sprintf("    <vertex><coordinates><x>%.5f</x><y>%.5f</y><z>%.5f</z></coordinates></vertex>\n",$v->[0],$v->[1],$v->[2]);
+      }
+      print $fh "   </vertices>\n";
+      my $mi = 2;
+      my $ei = 1;
+      if($p->{volumes}) {     # -- multiple volumes (multiple color/material)
+         foreach my $v (@{$p->{volumes}}) {
+            print $fh "   <volume materialid=\"$mi\">\n";
+            print $fh "   <metadata type=\"slic3r.extruder\">$ei</metadata>\n";     # -- essential for slic3r & slic3r-pe (and prusa-slicer as well)
+            foreach my $f (@$v) {
+               print $fh sprintf("   <triangle><v1>%d</v1><v2>%d</v2><v3>%d</v3></triangle>\n",$p->{facets}->[$f]->[0],$p->{facets}->[$f]->[1],$p->{facets}->[$f]->[2]);
+            }
+            print $fh "   </volume>\n";
+            $mi++;
+            $ei++;
+         }
+      } else {               # -- single volume (single color/material)
+         print $fh "   <volume>\n";
+         foreach my $f ($p->{facets}) {
+            print $fh sprintf("   <triangle><v1>%d</vi><v2>%d</v2><v3>%d</v3></triangle>\n",$f->[0],$f->[1],$f->[2]);
+         }
+         print $fh "   </volume>\n";
+      }
+      print $fh "  </mesh>\n";
+      print $fh " </object>\n";
+      if($p->{volumes}) {
+         $mi = 2;
+         foreach my $v (@{$p->{volumes}}) {        # -- listing materials (slice3r / slic3r-pe ignore it)
+            print $fh " <material id=\"$mi\">\n";
+            print $fh " </material>\n";
+            $mi++;
+         }
+      }
+      print $fh "</amf>\n";
+      close $fh;
    }
 }
 
@@ -2136,9 +2278,11 @@ sub read3MF {
                      my @co;                                          
                      foreach my $v ($m->look_down('_tag','vertices')) {
                         push(@co,[$v->{x},$v->{y},$v->{z}]);
-                     }
+                     }                                    
+                     $p->{vertices} = \@co;
                      foreach my $t ($m->look_down('_tag','triangles')) {
-                        push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
+                        #push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
+                        push(@{$p->{facets}},[$t->{v1},$t->{v2},$t->{v3}]);
                      }
                   }
                }
@@ -2168,8 +2312,10 @@ sub read3MF {
                   @p = &$mm($t,\@p);
                   push(@co,\@p);
                }
+               $p->{vertices} = \@co;
                foreach my $t (@{$o->{mesh}->{triangles}->{triangle}}) {
-                  push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
+                  #push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
+                  push(@{$p->{facets}},[$t->{v1},$t->{v2},$t->{v3}]);
                }
             }
          }
@@ -2214,11 +2360,15 @@ sub readOBJ {
             my(@c) = split(/ +/);
             my(@fc);
             shift(@c);
-            foreach (@c) {
-               s/\/.*$//;
-               push(@fc,$vs[$_-1]);
+            if(0) {
+               foreach (@c) {
+                  s/\/.*$//;
+                  push(@fc,$vs[$_-1]);
+               }
+               push(@{$p->{facets}},\@fc);
+            } else {
+               $p->{facets} = \@c;
             }
-            push(@{$p->{facets}},\@fc);
          } elsif(/^\s*$/) {
             ;
          } elsif(/^(\S+)/) {
@@ -2232,6 +2382,7 @@ sub readOBJ {
       $p->{min} = \@min;
       $p->{max} = \@max;
       $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      print toJSON($p);
       return $p;
       
    } else {
@@ -2240,11 +2391,75 @@ sub readOBJ {
    }
 }
 
+sub readOFF {
+   my($fn) = @_;
+   my $p = { };
+   print ", off read <$fn>\n" if($conf{verbose});
+   
+   my $err;
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      my($nv,$nf); 
+      my $t = 0;
+      while(<$fh>) {
+         s/\n$//;
+         next if(/^\s*#/||/^\s*$/);
+         $t++, next if($t==0 && /^OFF/);
+         $t++, $nv = $1, $nf = $2, next if($t==1 && /^(\d+)\s+(\d+)/);
+         if($t==2 && $nv > 0) {
+            s/^\s+//;
+            my(@c) = split(/\s+/);
+            @c = map { $_ * 1 } @c;
+            push(@{$p->{vertices}},[$c[0],$c[1],$c[2]]);
+            for(my $i=0; $i<3; $i++) {
+               $min[$i] = $c[$i] if($min[$i]>$c[$i]);
+               $max[$i] = $c[$i] if($max[$i]<$c[$i]);
+            }
+            $nv--;
+         } elsif($t==2 && $nv == 0 && $nf > 0) {
+            s/^\s+//;
+            my(@v) = split(/\s+/);
+            @v = map { $_ * 1 } @v;
+            for(my $i=0; $i<$v[0]-2; $i++) {
+               my(@f) = @v[($i+1)..($i+1+2)];
+               push(@{$p->{facets}},\@f);
+               #my(@vx);
+               #for(@f) {
+               #   push(@vx,$p->{vertices}->[$_]);
+               #}
+               #push(@{$p->{facets}},\@vx);
+            }
+            $nf--;
+         } elsif($t==2 && $nv == 0 && $nf == 0) {
+            last;
+         }
+      }
+      close $fh;
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+      
+   } else {
+      print STDERR "$me: only .off supported, abort.\n";
+      exit;
+   }
+}
+
 # ---------------------------------------------------------------------------------------------------------------
 
 sub partWrite {
    my($fn,$p) = @_;
-   return writeSTL($fn,$p);
+   if($p->{volumes}) {
+      return writeAMF($fn,$p);
+   } else {
+      return writeSTL($fn,$p);
+   }
 }
 
 sub partRead {
@@ -2260,6 +2475,8 @@ sub partRead {
       $p = readAMF($fn);
    } elsif($fn=~/\.obj$/i) {
       $p = readOBJ($fn);
+   } elsif($fn=~/\.off$/i) {
+      $p = readOFF($fn);
    #} elsif($fn=~/\.3mf$/i) {
    #   $p = read3MF($fn);
    } else {
@@ -2346,16 +2563,26 @@ sub partsArrange {         # -- arrange multiple parts (same or different sizes)
 }
 
 sub partMerge {            # -- merge part to another one
-   my($p0,$c) = @_;
+   my($p0,$c) = @_;           
 
    unless($p0 && $p0->{facets}) {
       $p0->{facets} = [];
+      $p0->{vertices} = [];
       $p0->{min} = [1e6,1e6,1e6];
       $p0->{max} = [-1e6,-1e6,-1e6];
       $p0->{size} = [0,0,0];
    }
-   push(@{$p0->{facets}},@{$c->{facets}});
-
+   if(0) {
+      push(@{$p0->{facets}},@{$c->{facets}});
+   } else {
+      my $off = @{$p0->{vertices}};
+      my(@a) = map { [$_->[0] + $off,$_->[1] + $off, $_->[2] + $off] } @{$c->{facets}};
+      my(@b); @b = map { [$_->[0] + $off,$_->[1] + $off, $_->[2] + $off] } @{$c->{volumes}} if($c->{volumes});
+      push(@{$p0->{facets}},@a);
+      push(@{$p0->{vertices}},@{$c->{vertices}});
+      push(@{$p0->{volumes}},@b) if($c->{volumes});
+   }
+   
    for(my $i=0; $i<3; $i++) {
       $p0->{min}->[$i] = $c->{min}->[$i] if($p0->{min}->[$i]>$c->{min}->[$i]);
       $p0->{max}->[$i] = $c->{max}->[$i] if($p0->{max}->[$i]<$c->{max}->[$i]);
@@ -2363,7 +2590,7 @@ sub partMerge {            # -- merge part to another one
    $p0->{size}->[0] = $p0->{max}->[0]-$p0->{min}->[0];
    $p0->{size}->[1] = $p0->{max}->[1]-$p0->{min}->[1];
    $p0->{size}->[2] = $p0->{max}->[2]-$p0->{min}->[2];
-   
+
    return $p0;
 }
 
@@ -2378,27 +2605,48 @@ sub partTransform {
    my(@min,@max);
    $min[0] = $min[1] = $min[2] = 1e6;
    $max[0] = $max[1] = $max[2] = -1e6;
-   
-   foreach my $f (@{$p->{facets}}) {
-      my @nf;
-      foreach my $v (@$f) {
-         my @nv = &$t(@$v);               # -- per vertice
-         push(@nf,\@nv) if(@nv==3);
-      }
-      if(@nf==3) {
-         $pn->{facets}->[$n++] = \@nf;
-         $nn++;
-      } else {
-         $pn->{facets}->[$n++] = $f;
-         @nf = @$f;
-      }
-      for(my $i=0; $i<3; $i++) {          # -- 3 vertices per face
+
+   if(1) { 
+      my @np;
+      my $n = 0;
+      foreach my $v (@{$p->{vertices}}) {
+         my @nv = &$t(@$v);               # -- per vertex
          for(my $j=0; $j<3; $j++) {       # -- x,y,z
             # -- update min/max
-            $min[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]<$min[$j]);
-            $max[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]>$max[$j]);
+            $min[$j] = $nv[$j] if($nv[$j]<$min[$j]);
+            $max[$j] = $nv[$j] if($nv[$j]>$max[$j]);
+         }
+         push(@np,\@nv);
+         $n++;
+      }
+      $pn->{facets} = $p->{facets};
+      $pn->{vertices} = \@np;
+      $pn->{volumes} = $p->{volumes} if($p->{volumes});
+      print ", $n vertices transformed\n" if($conf{verbose});
+      
+   } else {
+      foreach my $f (@{$p->{facets}}) {
+         my @nf;
+         foreach my $v (@$f) {
+            my @nv = &$t(@$v);               # -- per vertex
+            push(@nf,\@nv) if(@nv==3);
+         }
+         if(@nf==3) {
+            $pn->{facets}->[$n++] = \@nf;
+            $nn++;
+         } else {
+            $pn->{facets}->[$n++] = $f;
+            @nf = @$f;
+         }
+         for(my $i=0; $i<3; $i++) {          # -- 3 vertices per face
+            for(my $j=0; $j<3; $j++) {       # -- x,y,z
+               # -- update min/max
+               $min[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]<$min[$j]);
+               $max[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]>$max[$j]);
+            }
          }
       }
+      print ", $nn of $n facets transformed\n" if($conf{verbose});
    }
    # -- keep min/max/size up-to-date
    $pn->{min} = \@min;
@@ -2407,8 +2655,6 @@ sub partTransform {
    $pn->{process} = ();
    
    push(@{$pn->{process}},@{$p->{process}}) if($p->{process});
-   
-   print "$nn of $n facets transformed\n" if($conf{verbose});
    
    return $pn;
 }
@@ -2825,14 +3071,19 @@ sub inline_phases {
    }
 
    if($n==2) {
-      $v{'a'} = 1 - $r;
-      $v{'b'} = $r;
+      if($n==2) {
+         $v{'a'} = $r < 1/2 ? 1-$r*2 : ($r-1/2)*2;     # 1..0..1
+         $v{'b'} = $r < 1/2 ? $r*2 : 1-($r-1/2)*2;     # 0..1..0
+      } else {
+         $v{'a'} = 1 - $r;
+         $v{'b'} = $r;
+      }
       return "A$v{$m{'B'}} B$v{$m{'B'}}";
    } else {
       if($p==3) {
-         $v{'a'} = $r < 1/2 ? 1-$r*2 : 0;
-         $v{'b'} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;
-         $v{'c'} = $r >= 1/2 ? ($r-1/2)*2 : 0;
+         $v{'a'} = $r < 1/2 ? 1-$r*2 : 0;                                      # 1..0..0
+         $v{'b'} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;                           # 0..1..0
+         $v{'c'} = $r >= 1/2 ? ($r-1/2)*2 : 0;                                 # 0..0..1
       } else {
          $v{'a'} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
          $v{'b'} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
