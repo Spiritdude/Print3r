@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off and .gcode
 #
 # History:
+# 2019/09/02: 0.2.8: CuraEngine-4.2.0 support via --slicer=cura4, see wiki for install instructions
 # 2019/06/09: 0.2.7: cleaner read{STL,AMF,OBJ,OFF}(), and partTransform(), support of multiple volumes/colors/material in AMF
 # 2019/05/28: 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support '--toolmap' & '--toolremap'
 # 2019/05/24: 0.2.5: preliminary slicer=prusa support, additional inline functions support for gcode transformation: &toolcolor(n,a,b,c,d,e), &hsl2cmy(h,s,l), &phases(n=2|3,p=3|4)
