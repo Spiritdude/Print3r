@@ -46,7 +46,7 @@ use IO::Socket::INET;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.2.8';
+my $VERSION = '0.2.9.a';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -79,7 +79,8 @@ my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=
 my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
 my %sliceExtExtraSupported = ('off'=>1);
 
-my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa3d','prusa'=>'prusa-slicer','cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine','cura4'=>'CuraEngine4');
+my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa3d','prusa'=>'prusa-slicer',
+   'cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine','cura4'=>'CuraEngine4');
 
 my $printer;
 $printer->{build}->{x} = 200;
@@ -476,6 +477,9 @@ if($cmd eq 'analyze') {          # -- not yet
    } else {
       error("couldn't start ser2net job");
    }
+   
+} elsif($cmd eq 'webgui') {
+   webgui();
    
 } else {
    print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
@@ -1835,7 +1839,8 @@ sub printGcode {
    }
    close $fh;
    
-   printerSend($com,"M117 completed\n");
+   my $tot = int((time() - $st + 30)/60);
+   printerSend($com,"M117 completed: " . sprintf("%dh %02dm",int($tot/60),$tot%60) . "\n");
    printerResponse($com);
    
    sleep 3;
@@ -3033,6 +3038,134 @@ sub tcpPing {
    return $s && $s->close() || 0;
 }
    
+# ---------------------------------------------------------------------------------------------------------------
+
+sub webgui {
+   my $server = IO::Socket::INET->new(
+      LocalPort => $conf{webgui_port} || 9082,
+      Type      => SOCK_STREAM,
+      Reuse     => 1,
+      Listen    => 10 )  # or SOMAXCONN
+      or die "can't start a tcp server on port $conf{webgui_port}: $!\n";
+  
+   use IO::Socket;
+   use IO::Select;
+   
+   print STDERR "$me: listening port $conf{webgui_port}\n" if($conf{verbose});
+
+   $SIG{PIPE} = 'IGNORE';
+   $SIG{CHLD} = 'IGNORE';
+
+   my(%g);
+   my $info;
+
+   my $rs = new IO::Select();
+   $rs->add($server);
+   while(1) {
+      my($rhs) = IO::Select->select($rs,undef,undef,0.1);
+      foreach my $rh (@$rhs) {
+         if($rh==$server) {
+            my $c = $rh->accept();
+            $rs->add($c);
+            
+         } else {
+            processRequestHeader($rh);
+            $rs->remove($rh);
+         }
+      }
+   }
+}
+
+sub processRequestHeader {
+   my($client) = @_;
+
+   $client->autoflush(1);
+   $_ = <$client>;
+   if($_) {
+      my($i);
+
+      s/[\n\r]$//g; 
+
+      my($cmd) = ($_=~/^(\S+)/);
+
+      # -- first line of request, "GET / HTTP/1.1"
+      $i->{Header}->{RequestType} = $1, 
+      $i->{Header}->{RequestURL} = $2, 
+      $i->{Header}->{Version} = $3 if(/^(\S+)\s*(\S*)\s*(\S*)/);
+      $i->{Header}->{RemoteAddr} = $client->peerhost();
+
+      if($i->{Header}->{RequestURL}=~s/\?(\S*)//) {
+         $i->{Header}->{QueryString} = $1;
+         foreach my $kv (split(/&/,$i->{Header}->{QueryString})) {
+            my($k,$v) = split(/=/,$kv);
+            $v =~ s/\+/ /g; $v =~ s/%(\X\X)/sprintf("%c",hex($1))/eg; $v =~ s/%%/%/g;
+            $i->{Variable}->{$k} = $v;
+         }   
+      }
+      while(<$client>) {
+         s/[\r\n]//g;
+         if($cmd eq 'PUT'||$cmd eq 'POST'&&length($_)==0) {            # -- end of PUT header
+            read($client,$i->{Content}->{Body},$i->{Header}->{'Content-Length'});
+            $i->{Content}->{Length} = $i->{Header}->{'Content-Length'};
+            
+            if($cmd eq 'POST') {
+               foreach my $kv (split(/&/,$i->{Content}->{Body})) {
+                  my($k,$v) = split(/=/,$kv);
+                  $v =~ s/\+/ /g; $v =~ s/%(\X\X)/sprintf("%c",hex($1))/eg; $v =~ s/%%/%/g;
+                  $i->{Variable}->{$k} = $v;
+               }   
+            }
+            print "C: $i->{Content}->{Body}\n" if($conf{verbose}>1);
+            last;
+            
+         } elsif(length($_)==0) {                      # -- end of header (of any command)
+            last;
+         }
+      }
+      if(fork()==0) {
+         processRequest($client,$i);
+         close $client;
+         exit 0;
+      }
+   }
+   close $client;
+}
+
+sub processRequest {
+   my($c,$i) = @_;
+   print toJSON($i) if($conf{verbose}>1);
+   my $p = $i->{Header}->{RequestURL};
+   $p .= "index.html" if($p=~/\/$/);
+   if(-f "$conf{webgui_root}/www/$p") {                   # -- something locally and static?
+      processLocalStatic($c,$p);
+   } else {
+      print $c "HTTP/1.1 404 NOT FOUND\n\n";
+   }
+}
+
+sub processLocalStatic {
+   my($c,$p) = @_;
+   my $mime = "text/plain";
+
+   $mime = "text/html" if($p=~/\.html$/i);
+   $mime = "image/jpeg" if($p=~/\.jpg$/i);
+   $mime = "image/png" if($p=~/\.png$/i);
+   
+   if(open(my $fh,'<',"$conf{webgui_root}/www/$p")) {
+      print $c "HTTP/1.1 200 OK\nContent-Type: $mime\n\n";
+      binmode($fh);
+      my $buff;
+      my $n;
+      while($n=read($fh,$buff,4096)) {
+         print $c $buff;
+      }
+      close($fh);
+      
+   } else {
+      print $c "HTTP/1.1 404 NOT FOUND\n\n";
+   }
+}
+
 # ---------------------------------------------------------------------------------------------------------------
 
 sub fromJSON {
