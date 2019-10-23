@@ -2472,7 +2472,7 @@ sub read3MJ {
    if(open(my $fh,"<",$fn)) {
       my $s = <$fh>;
       my $e = fromJSON($s);
-      unless($e && $e->{format} && $e->{format}>=1) {
+      unless($e && $e->{format} && $e->{format}=~/^3MJ\/\d\.\d/) {
          print STDERR "$me: invalid 3MJ format of \"$fn\"\n";
          exit -1;
       }
