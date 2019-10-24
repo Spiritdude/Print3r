@@ -2032,7 +2032,7 @@ sub readSTL {
          my $n;
          read($fh,$buff,80);
          read($fh,$n,4);
-         $n = unpack('i',$n);
+         $n = unpack('L',$n);
          print "$fn: $n facets\n" if($conf{verbose});
          my $fu = 'f f f';
          my %vx;
@@ -2044,7 +2044,7 @@ sub readSTL {
             read($fh,$v2,4*3);
             read($fh,$v3,4*3);
             read($fh,$at,2);
-            $at = unpack('s',$at);
+            $at = unpack('S',$at);
             my $v;
             push(@$v,[unpack($fu,$v1)]);
             push(@$v,[unpack($fu,$v2)]);
