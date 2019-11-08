@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.2.9.a
+VERSION=0.3.0
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share
@@ -11,7 +11,7 @@ all::
 
 requirements::
 	sudo apt install libexpat-dev libcurses-perl libncurses5-dev libreadline-dev
-	sudo cpan File::Which Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D 
+	sudo cpan File::Which IO::Zlib Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D 
 	sudo apt install libgd-perl ser2net socat slic3r
 	sudo apt install yagv
 
@@ -19,7 +19,7 @@ install::
 	sudo cp ${CMD} ${DEST_BIN}/
 	mkdir -p ${HOME}/.config/${NICK}; cd ${HOME}/.config/${NICK}; mkdir -p printer macro macro/filament slicer gconsole gconsole/commands 
 	sudo mkdir -p ${DEST_SHARE}/${NICK}
-	cd settings; tar cf - printer/*.ini macro/*.ini macro/filament/*.ini slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json gconsole | (cd ${DEST_SHARE}/${NICK}/; sudo tar xf -)
+	cd settings; tar cf - printer/*.ini macro/*.ini macro/filament/*.ini slicer/*.json slicer/*/base.ini slicer/*/map.ini slicer/*/*.def.json gconsole | (cd ${DEST_SHARE}/${NICK}/; sudo tar xf -)
 
 deinstall::
 	sudo rm -f ${DEST_BIN}/${CMD}

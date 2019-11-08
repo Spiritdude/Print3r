@@ -8,9 +8,10 @@
 #  Command line tool to print parts to 3d printers without GUI
 #  - slicing with slic3r backend
 #  - printing via USB
-#  - printing .scad, .stl, .amf, .obj, .off and .gcode
+#  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2019/10/25: 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 # 2019/09/02: 0.2.8: CuraEngine-4.2.0 support via --slicer=cura4, see wiki for install instructions
 # 2019/06/09: 0.2.7: cleaner read{STL,AMF,OBJ,OFF}(), and partTransform(), support of multiple volumes/colors/material in AMF
 # 2019/05/28: 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support '--toolmap' & '--toolremap'
@@ -39,14 +40,16 @@ use strict;
 use Time::HiRes qw(time sleep);
 use Device::SerialPort;
 use Math::Trig ':pi';
+# use Math::Matrix;
 use JSON;                          
 use XML::Simple;                    # -- reading .amf (XML)
 use File::Which;
 use IO::Socket::INET;
+use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.2.9.b';
+my $VERSION = '0.3.0';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -76,11 +79,36 @@ my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=
    'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
    'phase2_min'=>1,'phase3_min'=>1);
 
-my %sliceExtSupported = ('stl'=>1,'amf'=>1,'obj'=>1,'3mf'=>1);
-my %sliceExtExtraSupported = ('off'=>1,'3mj'=>1);
+# -- all formats we support for slicers (scad, sccad aside)
+my %formats = ( "stl"=>1, "amf"=>1, "obj"=>1, "3mf"=>1, "3mj"=>1, "off"=>1 );
 
-my %slicer2exe = ('slic3r'=>'slic3r','slic3r-pe'=>'slic3r-prusa3d','prusa'=>'prusa-slicer',
-   'cura-legacy'=>'CuraEngineLegacy','cura'=>'CuraEngine','cura4'=>'CuraEngine4');
+# -- all slicer specific information (formats = native supported format by the slicer)
+my $slicer;
+# = {
+#   "slic3r" => { exe => "slic3r", "formats" => { "stl"=>1, "amf"=>1 } },
+#   "slic3r-pe" => { exe => "slic3r-prusa3d", "formats" => { "stl"=>1, "amf"=>1 } },
+#   "prusa" => { exe => "prusa-slicer", "formats" => { "stl"=>1, "amf"=>1, "3mf"=>1 } },
+#   "cura-legacy" => { exe => "CuraEngineLegacy", "formats" => { "stl"=>1 } },
+#   "cura" => { exe => "CuraEngine", "formats" => { "stl"=>1, "3mf"=>1 } },
+#   "cura4" => { exe => "CuraEngine4", "formats" => { "stl"=>1, "3mf"=>1 } }
+#};
+
+foreach my $p (@paths) {
+   if(-e "$p/slicer/slicers.json") {
+      local $/;
+      open(my $fh,"<","$p/slicer/slicers.json");
+      my $c = <$fh>;
+      close $fh;
+      my $s = fromJSON($c);
+      if(ref($s)eq'HASH') {
+         foreach my $k (sort keys %$s) {     # -- merge data cummulative
+            $slicer->{$k} = $s->{$k};
+         }
+      } else {
+         print STDERR "$me: invalid JSON of $p/slicer/slicers.json, skipped\n";
+      }
+   }
+}
 
 my $printer;
 $printer->{build}->{x} = 200;
@@ -121,9 +149,9 @@ $| = 1;
 
 $process->{version} = "$NAME $VERSION";
 
-if($slicer2exe{$conf{slicer}}) {
-   if(!which($slicer2exe{$conf{slicer}})) {        # -- probe selected slicer for availability
-      error("slicer '$conf{slicer}' executable ($slicer2exe{$conf{slicer}}) not found");
+if($slicer->{$conf{slicer}}->{exe}) {
+   if(!which($slicer->{$conf{slicer}}->{exe})) {        # -- probe selected slicer for availability
+      error("slicer '$conf{slicer}' executable ($slicer->{$conf{slicer}}->{exe}) not found");
    }
 } else {
    if(!which($conf{slicer})) {                     # -- slicer executable directly set?
@@ -272,7 +300,7 @@ if($conf{prepend_gcode}) {
 
 if($cmd eq 'analyze') {          # -- not yet
    foreach my $fn (@f) {
-      if($fn=~/\.(\w+)$/ && $sliceExtSupported{lc($1)}) {
+      if($fn=~/\.(\w+)$/ && $formats{lc($1)}) {
          my $i = partRead($fn);
          if($i) {
             if($conf{verbose}) {
@@ -286,7 +314,7 @@ if($cmd eq 'analyze') {          # -- not yet
             }
          }
       } else {
-         print "$me: WARN: file-format not supported: <$fn>, only ",join(", ",sort keys %sliceExtSupported),"\n";
+         print "$me: WARN: file-format not supported: <$fn>, only ",join(", ",sort keys %formats),"\n";
       }
    }
 
@@ -335,7 +363,7 @@ if($cmd eq 'analyze') {          # -- not yet
          push(@rm,$fn);
       }
 
-      if($fn=~/\.(\w+)$/ && $sliceExtExtraSupported{lc($1)}) {
+      if($fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)})) { 
          my $p = partRead($fn);
          my $tmp = "/tmp/print3r-extra-$$-$n.".($p->{volumes}?"amf":"stl");
          partWrite($tmp,$p);
@@ -343,7 +371,7 @@ if($cmd eq 'analyze') {          # -- not yet
          push(@rm,$tmp);
       }
       
-      if($fn=~/\.(\w+)$/ && $sliceExtSupported{lc($1)}) {
+      if($fn=~/\.(\w+)$/ && $formats{lc($1)}) {
          #$conf{output} = "/tmp/print3r-$$-$n.gcode";
          #slicePart($fn,\%conf);
          #$fn = $conf{output};
@@ -365,7 +393,7 @@ if($cmd eq 'analyze') {          # -- not yet
             printGcode($fn,\%conf);
          }
       } else {
-         print "$me: WARN: file-format not supported: <$fn>, only scad, sccad, ",join(", ",sort keys %sliceExtSupported),", gcode\n";
+         print "$me: WARN: file-format not supported: <$fn>, only scad, sccad, ",join(", ",sort keys %formats),", gcode\n";
       }
       $n++;
    }
@@ -1096,15 +1124,16 @@ sub slicePart {
    my(%conf) = %{@_[0]};
    my $st = time();
    
-   if(!ref($fn) && $fn=~/\.(\w+)$/ && $sliceExtExtraSupported{lc($1)}) {
+   if(!ref($fn) && $fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)}) ) {
       my $p = partRead($fn);
       my $tmp = "/tmp/print3r-extra-$$.stl";
       writePart($tmp,$p);
       push(@rm,$tmp);
       $fn = $tmp;
    }
-   if(!ref($fn) && $fn=~/\.(\w+)$/ && !$sliceExtSupported{lc($1)}) {
-      print "$me: WARN: you can only slice .stl, .amf, .obj or .3mf files but not <$fn>, skipped\n";
+   if(!ref($fn) && $fn=~/\.(\w+)$/ && !$formats{lc($1)}) {
+      my $f = join(", ",keys %formats);
+      print "$me: WARN: you can only slice $f files but not <$fn>, skipped\n";
       return;
    }
    
@@ -1115,7 +1144,7 @@ sub slicePart {
    }
    my $tmp = "/tmp/print3r-$$.gcode";
    
-   my @a = ($slicer2exe{$conf{slicer}});
+   my @a = ($slicer->{$conf{slicer}}->{exe});
 
    print "$me: slice ($conf{slicer}) part".(ref($fn) && @$fn>1?"s":"")." to gcode: " unless($conf{quiet});
    
@@ -2092,28 +2121,42 @@ sub writeSTL {
    my($fn,$p) = @_;
    print ", stl writing <$fn>\n" if($conf{verbose});
    if(open(my $fh,">",$fn)) {
-      print $fh "solid\n";
-      foreach my $f (@{$p->{facets}}) {
-         print $fh "facet normal 0 0 0\n\touter loop\n";
-         if(0) {
-            foreach my $v (@$f) {
-               print $fh "\t\tvertex ",join(" ",@$v),"\n";
-            }
-         } else {
-            foreach my $vi ($f) {
-               for(my $i=0; $i<3; $i++) {
-                  if(!$p->{vertices}->[$vi->[$i]]) {
-                     error("malformed geometry, cannot export faces: ".toJSON($vi->[$i]));
+      if(0) {        # -- ascii, very verbose
+         print $fh "solid\n";
+         foreach my $f (@{$p->{facets}}) {
+            print $fh "facet normal 0 0 0\n\touter loop\n";
+            if(0) {
+               foreach my $v (@$f) {
+                  print $fh "\t\tvertex ",join(" ",@$v),"\n";
+               }
+            } else {
+               foreach my $vi ($f) {
+                  for(my $i=0; $i<3; $i++) {
+                     if(!$p->{vertices}->[$vi->[$i]]) {
+                        error("malformed geometry, cannot export faces: ".toJSON($vi->[$i]));
+                     }
+                     my $vp = $p->{vertices}->[$vi->[$i]] ;
+                     print $fh "\t\tvertex ",join(" ",@$vp),"\n";
                   }
-                  my $vp = $p->{vertices}->[$vi->[$i]] ;
-                  print $fh "\t\tvertex ",join(" ",@$vp),"\n";
                }
             }
+            print $fh "\tendloop\nendfacet\n";
          }
-         print $fh "\tendloop\nendfacet\n";
+         print $fh "endsolid\n";
+         close $fh;
+      } else {       # -- hammer the binary format out, still wasteful
+         print $fh " "x80;
+         print $fh pack("L",scalar @{$p->{facets}});
+         foreach my $f (@{$p->{facets}}) {
+            print $fh pack("f3",0,0,0);   # -- normals
+            my $i = 0;
+            print $fh pack("f3",@{$p->{vertices}->[$f->[$i]]}); $i++;
+            print $fh pack("f3",@{$p->{vertices}->[$f->[$i]]}); $i++;
+            print $fh pack("f3",@{$p->{vertices}->[$f->[$i]]});
+            print $fh pack("S",0);
+         }
+         close $fh;
       }
-      print $fh "endsolid\n";
-      close $fh;
    }
 }
 
@@ -2152,7 +2195,6 @@ sub readAMF {
             my $vn = 0;
             foreach my $t (ref($m->{volume})eq'ARRAY'?@{$m->{volume}}:$m->{volume}) {
                foreach my $c (@{$t->{triangle}}) {
-                  #push(@{$p->{facets}},[$vs[$c->{v1}],$vs[$c->{v2}],$vs[$c->{v3}]]);
                   push(@{$p->{facets}},[$c->{v1},$c->{v2},$c->{v3}]);
                   push(@{$p->{volumes}->[$vn]},$#{$p->{facets}});
                }
@@ -2225,30 +2267,28 @@ sub writeAMF {
 sub read3MF {
    # -- supporting .3mf files (zip-file with multiple files) - not yet fully functional
    my($fn) = @_;
-   my $p = { };
    print ", 3mf read <$fn>\n" if($conf{verbose});
 
    my $err;
 
-   my(@min,@max);
-   $min[0] = $min[1] = $min[2] = 1e6;
-   $max[0] = $max[1] = $max[2] = -1e6;
-
    require Archive::Zip;
    require XML::Simple;
+   
    # require HTML::TreeBuilder::XPath;  -- fails on me
    my $mr = sub {
-      my ($r_mat)  = @_;
-      my $num_rows = @$r_mat;
-      my $num_cols = @{$r_mat->[0]};
-      ($num_rows, $num_cols); 
+      my($m)  = @_;
+      my $r = @$m;
+      my $c = @{$m->[0]};
+      return ($r,$c); 
    };
    my $mm = sub {
-      my ($r_mat1, $r_mat2) = @_;
-      my ($r_product);
-      my ($r1, $c1) = &$mr ($r_mat1);
-      my ($r2, $c2) = &$mr ($r_mat2);
-      die "Matrix 1 has $c1 columns and matrix 2 has $r2 rows." . " Cannot multiply\n" unless ($c1 == $r2);
+      my($r_mat1,$r_mat2) = @_;
+      my($r_product);
+      my($r1,$c1) = &$mr($r_mat1);
+      my($r2,$c2) = &$mr($r_mat2);
+
+      die "$me: matrix 1 has $c1 columns and matrix 2 has $r2 rows, cannot multiply\n" unless ($c1 == $r2);
+
       for (my $i = 0; $i < $r1; $i++) {
          for (my $j = 0; $j < $c2; $j++) {
             my $sum = 0;
@@ -2261,81 +2301,92 @@ sub read3MF {
       $r_product;
    };
    my $zip = Archive::Zip->new($fn);
+
    if($zip) {
       my $m = $zip->memberNamed('3D/3dmodel.model');
       if($m && length($m->contents)) {
-         if(0) {
-            my $xml = HTML::TreeBuilder::XPath->new;
-            my $c = $xml->parse(scalar $m->contents);
-            if($c) {
-               my @bs = $c->look_down('_tag','build');
-               my @os = $c->look_down('_tag','object');
-               if(@os<1) {
-                  error("$fn: internal structure mismatch, no objects found");
-               }
-               if(@bs<1) {
-                  error("$fn: internal structure mismatch, no build section found");
-               }
-               foreach my $b ($bs[0]->look_down('_tag','item')) {
-                  my $o = $os[$b->attr('objectid')-1];
-                  print "objectid: ",$b->attr('objectid'),"\n";
-                  print toJSON($o);
-                  foreach my $m ($o->look_down('_tag','mesh')) {
-                     my @co;                                          
-                     foreach my $v ($m->look_down('_tag','vertices')) {
-                        push(@co,[$v->{x},$v->{y},$v->{z}]);
-                     }                                    
-                     $p->{vertices} = \@co;
-                     foreach my $t ($m->look_down('_tag','triangles')) {
-                        #push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
-                        push(@{$p->{facets}},[$t->{v1},$t->{v2},$t->{v3}]);
-                     }
-                  }
-               }
-            } else {
-               error("$fn: could not parse internal XML after unzipping");
-            }
-         } else {
-            my $xml = $m->contents;
-            $xml =~ s/^<[^>]+>//;         # -- needed
-            my $c = XMLin($xml);          # -- this seems to work
-            foreach my $b (@{$c->{build}->{item}}) {
-               my $o = $c->{resources}->{object}->{$b->{objectid}};
-               my @co;
+         my $xml = $m->contents;
+
+         $xml =~ s/^<[^>]+>//;         # -- needed
+
+         my $c = XMLin($xml);          # -- this seems to work
+         my $vn = 0;
+      
+         my @ps; 
+         
+         # print ", build" unless($conf{quiet}||$conf{verbose});
+         foreach my $b ($c->{build} && ref($c->{build}->{item})eq'ARRAY' ? @{$c->{build}->{item}} : $c->{resources}->{object}) {
+            # -- NOTE: we treat each build as separate model (independent of each other)
+            my $o = $b->{objectid} && $c->{resources}->{object}->{$b->{objectid}} || $b;
+            my $mv = $c->{build} && ref($c->{build}->{item})eq'ARRAY' ? @{$c->{build}->{item}} : 0;
+            my $t;
+    
+            my $fi = 0;
+            my $p = { };
+
+            my(@min,@max);
+            $min[0] = $min[1] = $min[2] = 1e6;
+            $max[0] = $max[1] = $max[2] = -1e6;
+
+            # print " #$vn" unless($conf{quiet}||$conf{verbose});
+            if($b->{transform}) {
                my @tr = split(/\s+/,$b->{transform});
-               my $t;
-               for(my $i=0; $i<4; $i++) {      # rows
-                  for(my $j=0; $j<4; $j++) {   # cols
-                     $t->[$j][$i] = @tr[$j+$i*4];
+               for(my $i=0; $i<4; $i++) {      # -- rows
+                  for(my $j=0; $j<3; $j++) {   # -- cols
+                     $t->[$i][$j] = $tr[$j+$i*3];
                   }
                }
-               foreach my $c (@{$o->{mesh}->{vertices}->{vertex}}) {
-                  my(@p) = ($c->{x},$c->{y},$c->{z});
-                  for(my $i=0; $i<3; $i++) {
-                     $min[$i] = $p[$i] if($p[$i]<$min[$i]);
-                     $max[$i] = $p[$i] if($p[$i]>$max[$i]);
-                  }
-                  @p = &$mm($t,\@p);
-                  push(@co,\@p);
-               }
-               $p->{vertices} = \@co;
-               foreach my $t (@{$o->{mesh}->{triangles}->{triangle}}) {
-                  #push(@{$p->{facets}},[$co[$t->{v1}],$co[$t->{v2}],$co[$t->{v3}]]);
-                  push(@{$p->{facets}},[$t->{v1},$t->{v2},$t->{v3}]);
-               }
+               $t->[0][3] = 0;
+               $t->[1][3] = 0;
+               $t->[2][3] = 0;
+               $t->[3][3] = 1;
             }
+            my $voff = 0;    # @{$p->{vertices}};
+            my(@off);
+            foreach my $c (@{$o->{mesh}->{vertices}->{vertex}}) {
+               my(@p) = ($c->{x},$c->{y},$c->{z});
+               if($t) {
+                  my $q = &$mm($t,[[$p[0]],[$p[1]],[$p[2]],[0]]);
+                  #my $p = &$mm($t,[[$p[0],$p[1],$p[2],0]]);
+                  @p = ($q->[0][0],$q->[1][0],-$q->[2][0]);       # -- for some bizarre reason z is inverted, revert it again
+                  #@p = ($q->[0][0],$q->[0][1],$q->[0][2]);
+               } else {
+                  @p = map { $_*1 } @p;
+               }
+               #$p[0] += $off[0];
+               #$p[1] += $off[1];
+               for(my $i=0; $i<3; $i++) {
+                  $min[$i] = $p[$i] if($p[$i]<$min[$i]);
+                  $max[$i] = $p[$i] if($p[$i]>$max[$i]);
+               }
+               push(@{$p->{vertices}},\@p);
+            }
+            foreach my $t (@{$o->{mesh}->{triangles}->{triangle}}) {
+               push(@{$p->{facets}},[$t->{v1}+$voff,$t->{v2}+$voff,$t->{v3}+$voff]);
+               #push(@{$p->{volumes}->[$vn]},$fi) if($mv);
+               $fi++;
+            }
+            $vn++;
+            $p->{min} = \@min;
+            $p->{max} = \@max;
+            $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+            $p = partRecenter($p,[1,1,-1]);    # -- ensure centered and z=0
+            push(@ps,$p);
          }
+         return partsArrange(@ps,$printer);
+         
       } else {
          error("$fn: internal format mismatch (no 3D/3dmodel.model)");
       }
-      $p->{min} = \@min;
-      $p->{max} = \@max;
-      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
          
    } else {
       error("$fn: error decoding zip format");
    }
-   return $p;
+   return { };
+}
+
+sub write3MF {
+   # -- not yet
 }
 
 sub readOBJ {
@@ -2357,23 +2408,17 @@ sub readOBJ {
          if(/^v /) {
             my(@c) = split(/ +/);
             shift(@c);
-            push(@vs,[$c[0],$c[1],$c[2]]);
+            push(@{$p->{vertices}},[$c[0]*1,$c[1]*1,$c[2]*1]);
             for(my $i=0; $i<3; $i++) {
                $min[$i] = $c[$i] if($min[$i]>$c[$i]);
                $max[$i] = $c[$i] if($max[$i]<$c[$i]);
             }
          } elsif(/^f /) {
             my(@c) = split(/ +/);
-            my(@fc);
             shift(@c);
-            if(0) {
-               foreach (@c) {
-                  s/\/.*$//;
-                  push(@fc,$vs[$_-1]);
-               }
-               push(@{$p->{facets}},\@fc);
-            } else {
-               $p->{facets} = \@c;
+            @c = map { $_-1 } @c;
+            foreach my $i (0..$#c-2) {
+               push(@{$p->{facets}},[$c[0],$c[$i+1],$c[$i+2]]);
             }
          } elsif(/^\s*$/) {
             ;
@@ -2468,9 +2513,26 @@ sub read3MJ {
    $min[0] = $min[1] = $min[2] = 1e6;
    $max[0] = $max[1] = $max[2] = -1e6;
    
-   local $/;
-   if(open(my $fh,"<",$fn)) {
-      my $s = <$fh>;
+
+   if(-e $fn) {
+      my $s;
+      
+      my $buff;                   # -- probe header
+      open(my $fh,"<",$fn);
+      read($fh,$buff,256);
+      close $fh;
+   
+      local $/;
+      if($buff=~/^\x1f\x8b/) {    # -- compressed
+         my $fh = new IO::Zlib;
+         $fh->open($fn,"rb");
+         $s = <$fh>;
+         $fh->close;
+      } else {
+         open(my $fh,"<",$fn);
+         $s = <$fh>;
+         close $fh;
+      }
       my $e = fromJSON($s);
       unless($e && $e->{format} && $e->{format}=~/^3MJ\/\d\.\d/) {
          print STDERR "$me: invalid 3MJ format of \"$fn\"\n";
@@ -2487,7 +2549,7 @@ sub read3MJ {
       my $vid = 0;
       my $fid = 0;
       foreach my $v (@{$e->{volumes}}) {
-         foreach my $f (@{$v->{faces}}) {
+         foreach my $f (@{$v->{triangles}}) {
             push(@{$p->{facets}},$f->{v});
             push(@{$p->{volumes}->[$vid]},$fid++) if(@{$e->{volumes}}>1);
          }
@@ -2535,10 +2597,10 @@ sub partRead {
       $p = readOFF($fn);
    } elsif($fn=~/\.3mj$/i) {
       $p = read3MJ($fn);
-   #} elsif($fn=~/\.3mf$/i) {
-   #   $p = read3MF($fn);
+   } elsif($fn=~/\.3mf$/i) {
+      $p = read3MF($fn);
    } else {
-      error("for internal preprocessing (scale,rotate,etc) only .stl, .amf, .obj, no support for <$fn>");
+      error("for internal preprocessing (scale,rotate,etc) only .stl, .amf, .obj, .off, .3mj, .3mf; no support for <$fn>");
    }
    $p->{filename} = $fn;
    $p->{atime} = time();
@@ -2797,7 +2859,7 @@ sub partRotate {
 
 sub partTranslate {
    my($p,$s) = @_;
-   # printf ", translate %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   printf ", translate %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
    print ", translate: @$s" if($conf{verbose});
    my $pn = partTransform($p,sub { 
       my(@p) = @_;
