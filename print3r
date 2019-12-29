@@ -321,7 +321,7 @@ if($cmd eq 'analyze') {          # -- not yet
 } elsif($cmd eq 'slice') {
    header();
    foreach my $fn (@f) {
-      $conf{output} = $fn, $conf{output} =~ s/\.[^\/\.]$/.gcode/ if(!defined $conf{output});
+      $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.gcode/ if(!defined $conf{output});
       if($fn=~/\.scad$/i || $conf{scad} || $fn=~/^#scad\s*/) {
          my $c_fn = $conf{output};
          $conf{output} = "/tmp/print3r-$$.stl";
@@ -364,8 +364,9 @@ if($cmd eq 'analyze') {          # -- not yet
       }
 
       if($fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)})) { 
+         my $fmt = lc $1;
          my $p = partRead($fn);
-         my $tmp = "/tmp/print3r-extra-$$-$n.".($p->{volumes}?"amf":"stl");
+         my $tmp = "/tmp/print3r-extra-$$-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
          partWrite($tmp,$p);
          $fn = $tmp;
          push(@rm,$tmp);
@@ -1126,8 +1127,8 @@ sub slicePart {
    
    if(!ref($fn) && $fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)}) ) {
       my $p = partRead($fn);
-      my $tmp = "/tmp/print3r-extra-$$.stl";
-      writePart($tmp,$p);
+      my $tmp = "/tmp/print3r-extra-$$.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+      partWrite($tmp,$p);
       push(@rm,$tmp);
       $fn = $tmp;
    }
@@ -1162,7 +1163,7 @@ sub slicePart {
          $p = partTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
          $p = partRecenter($p,[0,0,-1]) if($conf{slicer}=~/cura/);    # -- cura needs part to reside z=0
          printf ", size %.1fx%.1fx%.1f",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
-         my $tmp = "/tmp/print3r-$$-0-$n.".($p->{volumes}?"amf":"stl");
+         my $tmp = "/tmp/print3r-$$-0-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
          partWrite($tmp,$p);
          push(@fx,$tmp);
          $n++;
@@ -1193,7 +1194,7 @@ sub slicePart {
             my $pn = partTranslate(partRecenter($p,[1,1,0]),[($w+5)*($i%$xn),($h+5)*int($i/$xn),0]);
             partMerge($p0,$pn);
          }
-         my $tmp = "/tmp/print3r-$$-ar-$j.".($p->{volumes}?"amf":"stl");
+         my $tmp = "/tmp/print3r-$$-ar-$j.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
          partWrite($tmp,$p0);
          push(@fx,$tmp);
          $j++;
@@ -1209,7 +1210,7 @@ sub slicePart {
          push(@pa,partRead($f));      # -- a bit wasteful, but we don't necessarly have read it already
       }
       my $p = partsArrange(@pa,$printer);
-      my $tmp = "/tmp/print3r-$$-ar.".($p->{volumes}?"amf":"stl");
+      my $tmp = "/tmp/print3r-$$-ar.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
       partWrite($tmp,$p);
       push(@rm,$tmp);
       $fn = $tmp;                                        # -- back to a single part
@@ -1231,7 +1232,7 @@ sub slicePart {
          }
          $x -= $printer->{build}->{x}/2, $y -= $printer->{build}->{y}/2 if($conf{slicer}=~/cura/);    # -- cura assumes 0,0 at center of plate
          $p = partTranslate($p,[int($x),int($y),0]);
-         my $tmp = "/tmp/print3r-$$-1-$n.".($p->{volumes}?"amf":"stl");
+         my $tmp = "/tmp/print3r-$$-1-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
          partWrite($tmp,$p);
          push(@fx,$tmp);
          $n++;
@@ -2244,7 +2245,7 @@ sub writeAMF {
          }
       } else {               # -- single volume (single color/material)
          print $fh "   <volume>\n";
-         foreach my $f ($p->{facets}) {
+         foreach my $f (@{$p->{facets}}) {
             print $fh sprintf("   <triangle><v1>%d</vi><v2>%d</v2><v3>%d</v3></triangle>\n",$f->[0],$f->[1],$f->[2]);
          }
          print $fh "   </volume>\n";
@@ -2442,6 +2443,28 @@ sub readOBJ {
    }
 }
 
+sub writeOBJ {
+   my($fn,$p) = @_;
+   print ", obj writing <$fn>\n" if($conf{verbose});
+   if(open(my $fh,">",$fn)) {
+      foreach my $v (@{$p->{vertices}}) {
+         print $fh sprintf("v %.5f %.5f %.5f\n",$v->[0],$v->[1],$v->[2]);
+      }
+      if($p->{volumes}) {     # -- multiple volumes (multiple color/material)
+         foreach my $v (@{$p->{volumes}}) {
+            foreach my $f (@$v) {
+               print $fh sprintf("f %d %d %d\n",$p->{facets}->[$f]->[0]+1,$p->{facets}->[$f]->[1]+1,$p->{facets}->[$f]->[2]+1);
+            }
+         }
+      } else {               # -- single volume (single color/material)
+         foreach my $f (@{$p->{facets}}) {
+            print $fh sprintf("f %d %d %d\n",$f->[0]+1,$f->[1]+1,$f->[2]+1);
+         }
+      }
+      close $fh;
+   }
+}
+
 sub readOFF {
    my($fn) = @_;
    my $p = { };
@@ -2573,8 +2596,10 @@ sub read3MJ {
 
 sub partWrite {
    my($fn,$p) = @_;
-   if($p->{volumes}) {
+   if($fn=~/\.amf$/i) {
       return writeAMF($fn,$p);
+   } elsif($fn=~/\.obj$/i) {
+      return writeOBJ($fn,$p);
    } else {
       return writeSTL($fn,$p);
    }
