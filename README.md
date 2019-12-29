@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 - 0.2.8: CuraEngine-4.2.0 support via `--slicer=cura4`, see wiki for install instructions
 - 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support `--toolmap` & `--toolremap`
 - 0.2.5: preliminary `--slicer=prusa` support, additional inline functions support for gcode transformation: `&toolcolor(n,a,b,c,d,e)`, `&hsl2cmy(h,s,l)`, `&phases(n=2|3,p=3|4)`
