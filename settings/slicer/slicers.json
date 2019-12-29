@@ -1,0 +1,47 @@
+{
+   "cura" : {
+      "exe" : "CuraEngine",
+      "formats" : {
+         "3mf" : 1,
+         "stl" : 1
+      }
+   },
+   "cura-legacy" : {
+      "exe" : "CuraEngineLegacy",
+      "formats" : {
+         "stl" : 1
+      }
+   },
+   "cura4" : {
+      "exe" : "CuraEngine4",
+      "formats" : {
+         "3mf" : 1,
+         "stl" : 1
+      }
+   },
+   "prusa" : {
+      "exe" : "prusa-slicer",
+      "formats" : {
+         "obj" : 1,
+         "3mf" : 1,
+         "amf" : 1,
+         "stl" : 1
+      }
+   },
+   "slic3r" : {
+      "exe" : "slic3r",
+      "formats" : {
+         "obj" : 1,
+         "amf" : 1,
+         "stl" : 1
+      }
+   },
+   "slic3r-pe" : {
+      "exe" : "slic3r-prusa3d",
+      "formats" : {
+         "obj" : 1,
+         "amf" : 1,
+         "stl" : 1
+      }
+   }
+}
