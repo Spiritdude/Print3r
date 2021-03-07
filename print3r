@@ -1345,7 +1345,7 @@ sub slicePart {
             unless(defined $conf{$k}) {
                my $d = $c->{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
-               print $fh "$k = $d\n" unless($conf{$k});
+               print $fh "$k = $d\n" unless($conf{$k}&&$k=~/^slicer\./);
                #push(@a,"--slicer.$k=$d") unless($conf{$k});
             }
          }
@@ -1354,7 +1354,7 @@ sub slicePart {
             unless($internOption{$k}) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
-               print $fh "$k = $d\n";
+               print $fh "$k = $d\n" unless($k=~/^slicer\./);
                #push(@a,"--slicer.$k=$d") unless($conf{$k});
             }
          }
@@ -1380,7 +1380,7 @@ sub slicePart {
       } elsif($conf{auto_center}) {
          push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
       }                            
-      foreach my $k ('angle','erate','mode','axis','fixed_rot','zoff','center') {   # -- slicer4rtn native settings
+      foreach my $k ('angle','erate','mode','axis','fixed_rot','zoff','center','efmin','efmax','ip_steps_mm_min','recenter') {   # -- slicer4rtn native settings
          push(@a,"--$k=$conf{$k}") if(defined $conf{$k});
       }
       foreach my $k (sort keys %conf) {      # -- core slicer of slicer4rtn settings
