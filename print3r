@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2021/03/02: 0.3.1: --display_upate=off does not update display, e.g. raw g-code printing
 # 2019/10/25: 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 # 2019/09/02: 0.2.8: CuraEngine-4.2.0 support via --slicer=cura4, see wiki for install instructions
 # 2019/06/09: 0.2.7: cleaner read{STL,AMF,OBJ,OFF}(), and partTransform(), support of multiple volumes/colors/material in AMF
@@ -49,7 +50,7 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.0';
+my $VERSION = '0.3.1';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -77,7 +78,7 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
    'auto_center'=>1,'random_placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
    'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
-   'phase2_min'=>1,'phase3_min'=>1);
+   'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1);
 
 # -- all formats we support for slicers (scad, sccad aside)
 my %formats = ( "stl"=>1, "amf"=>1, "obj"=>1, "3mf"=>1, "3mj"=>1, "off"=>1 );
@@ -117,8 +118,8 @@ $printer->{build}->{z} = 180;
 
 foreach (split(/:/,$ENV{PRINT3R})) {
    my($k,$v);
-   $k = $1, $k =~ s/\-/_/g, $conf{$k} = '\1', $conf_src{$k} = 'env' if(/^([\w\-]+)$/);
-   ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} = $v, $conf_src{$k} = 'env', next if(/^([\w\-]+)=(.*)$/);
+   $k = $1, $k =~ s/\-/_/g, $conf{$k} = '\1', $conf_src{$k} = 'env' if(/^([\w\-\.]+)$/);
+   ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} = $v, $conf_src{$k} = 'env', next if(/^([\w\-\.]+)=(.*)$/);
 }
 foreach (@ARGV) {                # -- parse command-line arguments
    if(/^-(\w+)$/) {
@@ -251,12 +252,12 @@ foreach(@f) {
                s/#.*$//;         # -- remove comments
                s/\s*$//;         # -- remove trailing spaces
                my($k,$v);
-               if(/^([\w\-]+)\s*$/) {
+               if(/^([\w\-\.]+)\s*$/) {
                   $k = $1;
                   my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
                   $conf{$k_} = '\1', $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');   # -- cli options superceed macros
                   next;
-               } elsif(/^([\w\-]+)\s*=\s*"([^"]+)"/||/^([\w\-]+)\s*=\s*(\S.*)\s*$/) {
+               } elsif(/^([\w\-\/]+)\s*=\s*"([^"]+)"/||/^([\w\-\.]+)\s*=\s*(\S.*)\s*$/) {
                   $k = $1, $v = $2, $k =~ s/\-/_/g, $v = evalExpr($v);         # -- options in macro _ => -
                   my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
                   $printer->{$k_} = $conf{$k_} = $v, $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');  # -- cli options superceed macros
@@ -520,6 +521,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --device=<d>            set device, default: $conf{device}
       --slicer=<slicer>       set slicer, default: $conf{slicer}
                                  slic3r, slic3r-pe, prusa, cura-legacy, cura
+                                 slicer4rtn
       --printer=<name>        config of printer, default: $conf{printer}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
@@ -527,6 +529,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --scadlib=<files>       define OpenSCAD files separated by \",\" or \":\"
       --prepend-gcode=...     add manually start-gcode
       --layer-gcode=...       insert gcode at layer change
+      --display_update=off    turn built-in display updates off
       part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
@@ -711,8 +714,8 @@ sub readSlicerConf {
          next if(/^\s*#/);  
          next if(/^\s*$/);
          my($k,$v);
-         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, $kl = $k, next if(/^([\w\-]+)\s*=\s*"([^"]*)"/);  # -- cura-like
-         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $v =~ s/#.*$//, $i->{$k} = $v, $kl = $k, next if(/^([\w\-]+)\s*=\s*(\S.*)$/);    # -- slicer-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, $kl = $k, next if(/^([\w\-\.]+)\s*=\s*"([^"]*)"/);  # -- cura-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $v =~ s/#.*$//, $i->{$k} = $v, $kl = $k, next if(/^([\w\-\.]+)\s*=\s*(\S.*)$/);    # -- slicer-like
          if($kl && /^(\t| {3,})(\S.*)/) {    # -- multi-line setting
             $v = $2;
             if($v=~/"([^"]+)"/) {
@@ -1145,7 +1148,7 @@ sub slicePart {
    }
    my $tmp = "/tmp/print3r-$$.gcode";
    
-   my @a = ($slicer->{$conf{slicer}}->{exe});
+   my @a = ($slicer->{$conf{slicer}}->{exe}||$conf{slicer});
 
    print "$me: slice ($conf{slicer}) part".(ref($fn) && @$fn>1?"s":"")." to gcode: " unless($conf{quiet});
    
@@ -1217,7 +1220,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa')) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/)) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1325,6 +1328,74 @@ sub slicePart {
          } else {
             push(@a,$fn);
          }
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a);
+   
+   } elsif($conf{slicer}=~/rtn/) {                 # -- slicer4rtn
+      if(1) {
+         my $tmp = "/tmp/print3r-$$-setting.ini";
+         my $c = readSlicerConf("$cpath/slicer/$conf{slicer}/base.ini");
+
+         $c = remap($c);
+         
+         open(my $fh,">",$tmp);
+         foreach my $k (sort keys %$c) {        # -- write from existing base configuration
+            unless(defined $conf{$k}) {
+               my $d = $c->{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
+               print $fh "$k = $d\n" unless($conf{$k});
+               #push(@a,"--slicer.$k=$d") unless($conf{$k});
+            }
+         }
+         
+         foreach my $k (sort keys %conf) {      # -- command line arguments & macros
+            unless($internOption{$k}) {
+               my $d = $conf{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
+               print $fh "$k = $d\n";
+               #push(@a,"--slicer.$k=$d") unless($conf{$k});
+            }
+         }
+         close $fh;
+         push(@a,"--slicer.load=$tmp");
+         push(@rm,$tmp);
+         push(@a,'--slicer.before-layer-gcode=;LAYER:[layer_num]');      # -- make it Cura compatible a bit
+      }
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,"--output=$conf{output}");
+      } else {
+         push(@a,"--output=$tmp");
+         push(@rm,$tmp);
+      }
+      #push(@a,"--slicer=prusa-slicer");
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".join(",",@pos));
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center}) {
+         push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
+      }                            
+      foreach my $k ('angle','erate','mode','axis','fixed_rot','zoff','center') {   # -- slicer4rtn native settings
+         push(@a,"--$k=$conf{$k}") if(defined $conf{$k});
+      }
+      foreach my $k (sort keys %conf) {      # -- core slicer of slicer4rtn settings
+         if($k=~/^slicer\./) {
+            my $k_ = $k;
+            $k_ =~ s/_/-/g;
+            push(@a,"--$k_=$conf{$k}") 
+         }
+      }
+      push(@a,"-v") if($conf{verbose});
+      if(ref($fn)eq'ARRAY') {
+         push(@a,"--merge") if(@$fn>1);
+         push(@a,@$fn);
+      } else {
+         push(@a,$fn);
       }
       print ", slice" unless($conf{quiet});
       print ", exec: @a\n" if($conf{verbose});
@@ -1856,7 +1927,7 @@ sub printGcode {
          }});
       }
       
-      if(time()-$lst>3) {           # -- update printer display
+      if($conf{display_update}ne'off' && time()-$lst>3) {           # -- update printer display
          printerSend($com,sprintf("M117 %d%% eta %s l#%d%s\n",100*$pos/$pos_tot,
             #$eta > 36*60 ? sprintf("%.1fdy",$eta/60/24) : $eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m",
             $eta_e ? ($eta_e > 36*60 ? sprintf("%.1fdy",$eta_e/60/24) : $eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
@@ -1870,7 +1941,7 @@ sub printGcode {
    close $fh;
    
    my $tot = int((time() - $st + 30)/60);
-   printerSend($com,"M117 completed: " . sprintf("%dh %02dm",int($tot/60),$tot%60) . "\n");
+   printerSend($com,"M117 completed: " . sprintf("%dh %02dm",int($tot/60),$tot%60) . "\n") if($conf{display_update}ne'off');
    printerResponse($com);
    
    sleep 3;
