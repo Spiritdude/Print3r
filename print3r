@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2021/03/08: 0.3.2: experimental support for --slicer=slicer4rtn added
 # 2021/03/02: 0.3.1: --display_upate=off does not update display, e.g. raw g-code printing
 # 2019/10/25: 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 # 2019/09/02: 0.2.8: CuraEngine-4.2.0 support via --slicer=cura4, see wiki for install instructions
