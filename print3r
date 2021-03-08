@@ -1335,10 +1335,28 @@ sub slicePart {
       ($exit,$out) = execProgram(@a);
    
    } elsif($conf{slicer}=~/rtn/) {                 # -- slicer4rtn
+      my(%iconf) = (
+         core_slicer => 'slic3r',
+         mode => 'outside',
+         axis => 4,
+         angle => 45,
+         center => "0,0",
+         bed_center => "100,100",
+         zoff => 0,
+         max_speed => 0,
+         motion_minz => 0.2,
+         erate => 1.0,
+         efmax => 3,
+         efmin => 0.01,
+         ip_steps_mm_min => 2,
+         subdivide => 2,
+         output => 1,
+         keep => 1,
+         recenter => 1
+      );
       if(1) {
          my $tmp = "/tmp/print3r-$$-setting.ini";
          my $c = readSlicerConf("$cpath/slicer/$conf{slicer}/base.ini");
-
          $c = remap($c);
          
          open(my $fh,">",$tmp);
@@ -1346,8 +1364,7 @@ sub slicePart {
             unless(defined $conf{$k}) {
                my $d = $c->{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
-               print $fh "$k = $d\n" unless($conf{$k}&&$k=~/^slicer\./);
-               #push(@a,"--slicer.$k=$d") unless($conf{$k});
+               print $fh "$k = $d\n" unless(defined $conf{$k} || defined $iconf{$k});
             }
          }
          
@@ -1355,8 +1372,7 @@ sub slicePart {
             unless($internOption{$k}) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
-               print $fh "$k = $d\n" unless($k=~/^slicer\./);
-               #push(@a,"--slicer.$k=$d") unless($conf{$k});
+               print $fh "$k = $d\n" unless(defined $iconf{$k});
             }
          }
          close $fh;
@@ -1380,12 +1396,9 @@ sub slicePart {
          print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
       } elsif($conf{auto_center}) {
          push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
-      }                            
-      foreach my $k ('angle','erate','mode','axis','fixed_rot','zoff','center','efmin','efmax','ip_steps_mm_min','recenter') {   # -- slicer4rtn native settings
-         push(@a,"--$k=$conf{$k}") if(defined $conf{$k});
       }
-      foreach my $k (sort keys %conf) {      # -- core slicer of slicer4rtn settings
-         if($k=~/^slicer\./) {
+      foreach my $k (sort keys %conf) {      # -- pass slicer4rtn native args by command line
+         if(defined $iconf{$k}) {
             my $k_ = $k;
             $k_ =~ s/_/-/g;
             push(@a,"--$k_=$conf{$k}") 
