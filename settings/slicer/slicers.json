@@ -43,5 +43,13 @@
          "amf" : 1,
          "stl" : 1
       }
+   },
+   "slicer4rtn": {
+      "exe" : "slicer4rtn",
+      "format": {
+         "obj": 1,
+         "amf": 1,
+         "stl": 1
+      }
    }
 }
