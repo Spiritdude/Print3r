@@ -1352,7 +1352,11 @@ sub slicePart {
          subdivide => 2,
          output => 1,
          keep => 1,
-         recenter => 1
+         recenter => 1,
+         rot_gcode => 'A',
+         rot_revol => 1,
+         rot_offset => 0,
+         tilt_gcode => 'B'
       );
       if(1) {
          my $tmp = "/tmp/print3r-$$-setting.ini";
