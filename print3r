@@ -1383,7 +1383,6 @@ sub slicePart {
          close $fh;
          push(@a,"--slicer.load=$tmp");
          push(@rm,$tmp);
-         push(@a,'--slicer.before-layer-gcode=;LAYER:[layer_num]');      # -- make it Cura compatible a bit
       }
       if(defined $conf{output}) {
          unlink $conf{output};
