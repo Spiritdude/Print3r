@@ -1354,9 +1354,10 @@ sub slicePart {
          keep => 1,
          recenter => 1,
          rot_gcode => 'A',
-         rot_revol => 1,
+         rot_revolv => 1,
          rot_offset => 0,
-         tilt_gcode => 'B'
+         tilt_gcode => 'B',
+         layer_height => 0.2
       );
       if(1) {
          my $tmp = "/tmp/print3r-$$-setting.ini";
@@ -1842,7 +1843,13 @@ sub printGcode {
 
       # -- rudimentary catch layer changes, if small change then it's a layer change
       $cur_z = $1 if($l=~/^G[01] .*Z(\S+)/);
-      $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
+
+      # -- determine current Z layer nr
+      if($conf{slicer}=~/slicer4rtn/) {      # -- slicer4rtn is non-planar, rely on G-code info
+         $layer = $1 if($l =~ /^;\s*LAYER:\s*(\d+)/);     
+      } else {                               # -- determine via heuristic & nummerical the actual Z layer
+         $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
+      }
       $pos_t = 'abs' if(/^G90/); 
       $pos_t = 'rel' if(/^G91/); 
       if($pos_t eq 'abs') {
