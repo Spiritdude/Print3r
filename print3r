@@ -1348,7 +1348,7 @@ sub slicePart {
          erate => 1.0,
          efmax => 3,
          efmin => 0.01,
-         ip_steps_mm_min => 2,
+         inter_steps => 2,
          subdivide => 2,
          output => 1,
          keep => 1,
