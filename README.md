@@ -66,10 +66,10 @@ The software is licensed under GPLv3
 ```
 git clone https://github.com/Spiritdude/Print3r
 cd Print3r
-make requirements
 ```
 ## Install
 ```
+make requirements
 make install
 ```
 
