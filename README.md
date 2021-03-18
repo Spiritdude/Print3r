@@ -66,6 +66,7 @@ The software is licensed under GPLv3
 ## Install
 
 ```
+git clone https://github.com/Spiritdude/Print3r
 make install
 ```
 
