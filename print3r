@@ -51,7 +51,7 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.1';
+my $VERSION = '0.3.2';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -323,7 +323,7 @@ if($cmd eq 'analyze') {          # -- not yet
 } elsif($cmd eq 'slice') {
    header();
    foreach my $fn (@f) {
-      $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.gcode/ if(!defined $conf{output});
+      $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.gcode/, $conf{output} .= $conf{output}=~/\.gcode$/i? "" : ".gcode" if(!defined $conf{output});
       if($fn=~/\.scad$/i || $conf{scad} || $fn=~/^#scad\s*/) {
          my $c_fn = $conf{output};
          $conf{output} = "/tmp/print3r-$$.stl";
@@ -1336,7 +1336,7 @@ sub slicePart {
    
    } elsif($conf{slicer}=~/rtn/) {                 # -- slicer4rtn
       my(%iconf) = (
-         core_slicer => 'slic3r',
+         slicer => 'slic3r',
          mode => 'outside',
          axis => 4,
          angle => 45,
@@ -1356,6 +1356,7 @@ sub slicePart {
          rot_gcode => 'A',
          rot_revolv => 1,
          rot_offset => 0,
+         rot_fixed => 0,
          tilt_gcode => 'B',
          layer_height => 0.2
       );
@@ -1369,7 +1370,7 @@ sub slicePart {
             unless(defined $conf{$k}) {
                my $d = $c->{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
-               print $fh "$k = $d\n" unless(defined $conf{$k} || defined $iconf{$k});
+               print $fh "$k = $d\n" unless(defined $conf{$k} || defined $iconf{$k} || $k =~ /^slicer4rtn\./);
             }
          }
          
@@ -1377,7 +1378,7 @@ sub slicePart {
             unless($internOption{$k}) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
-               print $fh "$k = $d\n" unless(defined $iconf{$k});
+               print $fh "$k = $d\n" unless(defined $iconf{$k} || $k =~ /^slicer4rtn\./);
             }
          }
          close $fh;
@@ -1402,10 +1403,12 @@ sub slicePart {
          push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
       }
       foreach my $k (sort keys %conf) {      # -- pass slicer4rtn native args by command line
-         if(defined $iconf{$k}) {
+         my $k0 = $k;
+         $k =~ s/^slicer4rtn\.//;
+         if(defined $iconf{$k} && $k0 ne 'slicer') {
             my $k_ = $k;
             $k_ =~ s/_/-/g;
-            push(@a,"--$k_=$conf{$k}") 
+            push(@a,"--$k_=$conf{$k0}") 
          }
       }
       push(@a,"-v") if($conf{verbose});
