@@ -49,5 +49,18 @@
       "format": {
          "stl": 1
       }
+   },
+   "cura-slicer" : {
+      "exe" : "cura-slicer",
+      "formats" : {
+         "3mf" : 1,
+         "stl" : 1
+      }
+   },
+   "mandoline" : {
+      "exe" : "mandoline",
+      "formats" : {
+         "stl" : 1
+      }
    }
 }

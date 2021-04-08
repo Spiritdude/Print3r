@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2021/04/06: 0.3.3: experimental support for --slicer=mandoline added
 # 2021/03/08: 0.3.2: experimental support for --slicer=slicer4rtn added
 # 2021/03/02: 0.3.1: --display_upate=off does not update display, e.g. raw g-code printing
 # 2019/10/25: 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
@@ -73,7 +74,7 @@ $conf{serialif} = 'serialport';
 my @paths = ('./settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/usr/share/print3r");
 
 # -- short to long option mapping
-my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer');
+my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer','k'=>'keep');
 
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
@@ -598,7 +599,11 @@ sub header {
 
 sub cleanup {
    print "$me: cleanup\n" if($conf{verbose});
-   unlink @rm if(@rm);
+   if($conf{keep}) {
+      print "INFO: @rm files kept for debugging\n";
+   } else {
+      unlink @rm if(@rm);
+   }
    @rm = ();
 }
 
@@ -1221,7 +1226,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/)) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/||$conf{slicer}=~/mandoline/)) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1414,6 +1419,57 @@ sub slicePart {
       push(@a,"-v") if($conf{verbose});
       if(ref($fn)eq'ARRAY') {
          push(@a,"--merge") if(@$fn>1);
+         push(@a,@$fn);
+      } else {
+         push(@a,$fn);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a);
+   
+   } elsif($conf{slicer}eq'mandoline') {    # -- mandoline
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,"-o",$conf{output});
+      } else {
+         push(@a,"-o",$tmp);
+         push(@rm,$tmp);
+      }
+      if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+         while(<$fh>) {
+            chop; 
+            if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+               my($k,$v) = ($1,$2);
+               $v =~ s/\\n/\n/g;
+               push(@a,"-S","$k=$v") unless($conf{$k});
+            }
+         }
+         close $fh;
+      } else {
+         print "$me: WARN: no base.ini found in @paths\n";
+      }
+      my $c;
+      foreach my $k (sort keys %conf) {
+         next if($internOption{$k});
+         $c->{$k} = $conf{$k};         # -- just copy
+      }
+      $c = remap($c);
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+         push(@a,"-S","$k=$v");
+      }
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,("-S","bed_center_x=$pos[0]","-S","bed_center_y=$pos[1]"));
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center}) {
+         push(@a,('-S','bed_center_x='.($printer->{build}->{x}/2),'-S','bed_center_y='.($printer->{build}->{y}/2)));
+      }
+      push(@a,"-v") if($conf{verbose});
+      if(ref($fn)eq'ARRAY') {
+         #push(@a,"--merge") if(@$fn>1);
          push(@a,@$fn);
       } else {
          push(@a,$fn);
