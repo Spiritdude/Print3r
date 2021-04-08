@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.3: experimental support for --slicer=mandoline added
 - 0.3.2: experimental support for `--slicer=slicer4rtn` added
 - 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 - 0.2.8: CuraEngine-4.2.0 support via `--slicer=cura4`, see wiki for install instructions
