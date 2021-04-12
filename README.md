@@ -23,7 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
-- 0.3.3: experimental support for --slicer=mandoline added
+- 0.3.3: experimental support for `--slicer=mandoline` added
 - 0.3.2: experimental support for `--slicer=slicer4rtn` added
 - 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 - 0.2.8: CuraEngine-4.2.0 support via `--slicer=cura4`, see wiki for install instructions
@@ -47,7 +47,7 @@ print3r preview cube.gcode
 ### To Do / Planned
 - ~~slicer agnostic, e.g. support of CuraEngine (just the slicer)~~: done since 0.1.6 with `slic3r`, `slic3r-pe`, `cura-legacy` and `cura`
 - ~~network connectivity, distributed printing via tcp/ip~~: done since 0.2.0 with `client` command and `--device=tcp:<remote-ip>[:<n>]` (n=0 (default),1,2 etc)
-- ~~preview gcode in OpenGL/WebGL zoomable views~~: done with 0.1.6 via external `yagv` viewer
+- ~~preview gcode in OpenGL/WebGL zoomable views~~: done with 0.1.6 via external [`yagv` viewer](https://github.com/Spiritdude/yagv)
 - multiple extruder support (preferably slicer-independent)
 
 ## Platform
