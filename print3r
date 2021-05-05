@@ -2652,14 +2652,9 @@ sub readOFF {
             s/^\s+//;
             my(@v) = split(/\s+/);
             @v = map { $_ * 1 } @v;
-            for(my $i=0; $i<$v[0]-2; $i++) {
-               my(@f) = @v[($i+1)..($i+1+2)];
-               push(@{$p->{facets}},\@f);
-               #my(@vx);
-               #for(@f) {
-               #   push(@vx,$p->{vertices}->[$_]);
-               #}
-               #push(@{$p->{facets}},\@vx);
+            shift(@v);        # -- we don't need the first
+            for(my $i=0; $i<$#v-2; $i++) {
+               push(@{$p->{facets}},[$v[0],$v[$i+1],$v[$i+2]]);
             }
             $nf--;
          } elsif($t==2 && $nv == 0 && $nf == 0) {
