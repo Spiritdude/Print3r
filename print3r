@@ -52,7 +52,7 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.2';
+my $VERSION = '0.3.3';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -281,6 +281,12 @@ foreach(@f) {
 @f = @a;
 
 my $cmd = shift(@f);
+
+if(-e $cmd) {  # -- is it a file? => missing any command?
+   unshift(@f,$cmd);       # -- let's assume to print and put it back
+   $cmd = 'print';
+   print "$me: WARN: missing <command> (print, slice, preview, render, etc), therefore <print> is assumed\n";
+}
 
 my @f_in = @f;             # -- preserve original file list
 
@@ -1363,7 +1369,9 @@ sub slicePart {
          rot_offset => 0,
          rot_fixed => 0,
          tilt_gcode => 'B',
-         layer_height => 0.2
+         layer_height => 0.2,
+         start_gcode => 1,
+         end_gcode => 1
       );
       if(1) {
          my $tmp = "/tmp/print3r-$$-setting.ini";
@@ -1413,7 +1421,9 @@ sub slicePart {
          if(defined $iconf{$k} && $k0 ne 'slicer') {
             my $k_ = $k;
             $k_ =~ s/_/-/g;
-            push(@a,"--$k_=$conf{$k0}") 
+            my $v = $conf{$k0};
+            $v =~ s/\n/\\n/g;
+            push(@a,"--$k_=$v") 
          }
       }
       push(@a,"-v") if($conf{verbose});
@@ -2013,7 +2023,7 @@ sub printGcode {
       if($conf{display_update}ne'off' && time()-$lst>3) {           # -- update printer display
          printerSend($com,sprintf("M117 %d%% eta %s l#%d%s\n",100*$pos/$pos_tot,
             #$eta > 36*60 ? sprintf("%.1fdy",$eta/60/24) : $eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m",
-            $eta_e ? ($eta_e > 36*60 ? sprintf("%.1fdy",$eta_e/60/24) : $eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
+            $eta_e ? ($eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
             $layer,defined $process->{tool}?" T".$process->{tool}:""));
          printerResponse($com);
          #printerSend($com,"M31\n");
