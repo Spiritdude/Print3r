@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2021/06/21: 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 # 2021/04/06: 0.3.3: experimental support for --slicer=mandoline added
 # 2021/03/08: 0.3.2: experimental support for --slicer=slicer4rtn added
 # 2021/03/02: 0.3.1: --display_upate=off does not update display, e.g. raw g-code printing
@@ -52,7 +53,7 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.3';
+my $VERSION = '0.3.4';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
@@ -542,6 +543,8 @@ if($cmd eq 'analyze') {          # -- not yet
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
          --multiply-part=<n>  multiply part(s)
+            --rows=<n>           define rows for multiplied parts
+            --cols=<n>           define cols for multiplied parts
          --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
          --scale=<f>             scale part f,f,f
          --rotate=<x>,<y>,<z>    rotate x,y,z
@@ -1202,8 +1205,9 @@ sub slicePart {
          my($w,$h) = ($p->{size}->[0],$p->{size}->[1]);
          my $p0 = { };
          my $n = $conf{multiply_part};
-         my $xn = int(sqrt($n));
-         print ", multiply ${n}x" unless($conf{quiet});
+         my $ry = $w / $h;
+         my $xn = $conf{cols} || ($conf{rows} ? int($n / $conf{rows} + 0.5) : int(sqrt($n)) );
+         print ", multiply ${n}x ($xn cols)" unless($conf{quiet});
          my @pb;
          foreach my $i (0..$n-1) {
             my $pn = partTranslate(partRecenter($p,[1,1,0]),[($w+5)*($i%$xn),($h+5)*int($i/$xn),0]);

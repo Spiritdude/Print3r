@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 - 0.3.3: experimental support for `--slicer=mandoline` added
 - 0.3.2: experimental support for `--slicer=slicer4rtn` added
 - 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
@@ -98,6 +99,8 @@ Print3r (print3r) 0.2.0 USAGE: [<options>] <cmd> <file1> [<...>]
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
          --multiply-part=<n>  multiply part(s)
+            --rows=<n>           define rows for multiplied parts
+            --cols=<n>           define cols for multiplied parts
          --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
          --scale=<f>             scale part f,f,f
          --rotate=<x>,<y>,<z>    rotate x,y,z
