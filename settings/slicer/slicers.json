@@ -62,5 +62,12 @@
       "formats" : {
          "stl" : 1
       }
+   },
+   "5dmaker": {
+      "exe": "5dmaker",
+      "formats": {
+         "stl": 1,
+         "5mf": 1
+      }
    }
 }

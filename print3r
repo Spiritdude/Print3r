@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2021/06/24: 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
 # 2021/06/21: 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 # 2021/04/06: 0.3.3: experimental support for --slicer=mandoline added
 # 2021/03/08: 0.3.2: experimental support for --slicer=slicer4rtn added
@@ -53,9 +54,10 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.4';
+my $VERSION = '0.3.5';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
+my %conf_ch;         # -- conf changed from defaults
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
 my $process;         # -- metadata of the process/task itself (e.g. elapsed time per stage)
 my @f;
@@ -84,7 +86,7 @@ my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=
    'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1);
 
 # -- all formats we support for slicers (scad, sccad aside)
-my %formats = ( "stl"=>1, "amf"=>1, "obj"=>1, "3mf"=>1, "3mj"=>1, "off"=>1 );
+my %formats = ( "stl"=>1, "amf"=>1, "obj"=>1, "3mf"=>1, "3mj"=>1, "off"=>1, "5mf"=>1 );
 
 # -- all slicer specific information (formats = native supported format by the slicer)
 my $slicer;
@@ -220,6 +222,7 @@ if($conf{printer}) {
                         $c->{$k} =~ s/\$(\w+)/defined $conf{$1} ? $conf{$1} : "\$$1" /eg;          # -- only replace if variable is known
                      }
                      $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer';
+                     $conf_ch{$k}++;
                   }
                }
                foreach my $k (sort keys %conf) {     # -- transfer command-line args to slicer config
@@ -258,12 +261,12 @@ foreach(@f) {
                if(/^([\w\-\.]+)\s*$/) {
                   $k = $1;
                   my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
-                  $conf{$k_} = '\1', $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');   # -- cli options superceed macros
+                  $conf_ch{$k_}++, $conf{$k_} = '\1', $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');   # -- cli options superceed macros
                   next;
                } elsif(/^([\w\-\/]+)\s*=\s*"([^"]+)"/||/^([\w\-\.]+)\s*=\s*(\S.*)\s*$/) {
                   $k = $1, $v = $2, $k =~ s/\-/_/g, $v = evalExpr($v);         # -- options in macro _ => -
                   my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
-                  $printer->{$k_} = $conf{$k_} = $v, $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');  # -- cli options superceed macros
+                  $conf_ch{$k_}++, $printer->{$k_} = $conf{$k_} = $v, $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');  # -- cli options superceed macros
                   next;
                }
             }
@@ -346,6 +349,8 @@ if($cmd eq 'analyze') {          # -- not yet
          $fn = $conf{output};
          $conf{output} = $c_fn;
          push(@rm,$fn);
+      } elsif($fn=~/\.5mf$/i) {
+         $conf{slicer} = '5dmaker' unless($conf_ch{slicer});
       }
       slicePart($fn,\%conf);
       my $fno = processGcode($conf{output});
@@ -371,9 +376,11 @@ if($cmd eq 'analyze') {          # -- not yet
          sccadToSTL($fn,\%conf);
          $fn = $conf{output};
          push(@rm,$fn);
+      } elsif($fn=~/\.5mf$/i) {
+         $conf{slicer} = '5dmaker' unless($conf_ch{slicer});
       }
 
-      if($fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)})) { 
+      if($fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)})) {   # -- conversion needed for slicer?
          my $fmt = lc $1;
          my $p = partRead($fn);
          my $tmp = "/tmp/print3r-extra-$$-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
@@ -1142,7 +1149,7 @@ sub slicePart {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
    my $st = time();
-   
+
    if(!ref($fn) && $fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)}) ) {
       my $p = partRead($fn);
       my $tmp = "/tmp/print3r-extra-$$.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
@@ -1236,7 +1243,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/||$conf{slicer}=~/mandoline/)) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/||$conf{slicer}=~/mandoline/||$conf{slicer}eq'5dmaker')) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1480,6 +1487,60 @@ sub slicePart {
          print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
       } elsif($conf{auto_center}) {
          push(@a,('-S','bed_center_x='.($printer->{build}->{x}/2),'-S','bed_center_y='.($printer->{build}->{y}/2)));
+      }
+      push(@a,"-v") if($conf{verbose});
+      if(ref($fn)eq'ARRAY') {
+         #push(@a,"--merge") if(@$fn>1);
+         push(@a,@$fn);
+      } else {
+         push(@a,$fn);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a);
+   
+   } elsif($conf{slicer}eq'cura-slicer'||$conf{slicer}eq'5dmaker') {    # -- cura-slicer or 5dmaker
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,"-o",$conf{output});
+      } else {
+         push(@a,"-o",$tmp);
+         push(@rm,$tmp);
+      }
+      if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+         while(<$fh>) {
+            chop; 
+            if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+               my($k,$v) = ($1,$2);
+               #$v =~ s/\\n/\n/g;
+               push(@a,"--$k=$v") unless($conf{$k});
+            }
+         }
+         close $fh;
+      } else {
+         print "$me: WARN: no base.ini found in @paths\n";
+      }
+      my $c;
+      foreach my $k (sort keys %conf) {
+         next if($internOption{$k});
+         my $v = $conf{$k};
+         $v =~ s/\n/\\n/g;
+         $c->{$k} = $v;         # -- just copy
+      }
+      $c = remap($c);
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; 
+         $v =~ s/\n/\\n/g;
+         push(@a,"--$k=$v");
+      }
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,"--bed_center=$pos[0],$pos[1]");
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center}) {
+         push(@a,'--bed_center='.($printer->{build}->{x}/2).','.($printer->{build}->{y}/2));
       }
       push(@a,"-v") if($conf{verbose});
       if(ref($fn)eq'ARRAY') {

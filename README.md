@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
 - 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 - 0.3.3: experimental support for `--slicer=mandoline` added
 - 0.3.2: experimental support for `--slicer=slicer4rtn` added
