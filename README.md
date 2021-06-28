@@ -23,6 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.6: support for --post=<post1>[,<post2>...] and --post_<post1>=proc %i -o %o
 - 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
 - 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 - 0.3.3: experimental support for `--slicer=mandoline` added
@@ -82,7 +83,7 @@ See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how
 
 ## Usage
 ```
-Print3r (print3r) 0.2.0 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.3.6 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
@@ -91,11 +92,17 @@ Print3r (print3r) 0.2.0 USAGE: [<options>] <cmd> <file1> [<...>]
       --device=<d>            set device, default: /dev/ttyUSB0
       --slicer=<slicer>       set slicer, default: slic3r
                                  slic3r, slic3r-pe, prusa, cura-legacy, cura
+                                 slicer4rtn, cura-slicer, 5dmaker
       --printer=<name>        config of printer, default: default
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
       --scad                  consider all arguments as actual OpenSCAD code (not files)
       --scadlib=<files>       define OpenSCAD files separated by "," or ":"
+      --prepend-gcode=...     add manually start-gcode
+      --layer-gcode=...       insert gcode at layer change
+      --display_update=off    turn built-in display updates off
+      --post_<stage>=...      define a post-processing stage (use '%i' input file, '%o' output file)
+      --post=<stage>[,<stage>]  apply post-processing stage(s)
       part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center

@@ -6,11 +6,12 @@
 #
 # Description:
 #  Command line tool to print parts to 3d printers without GUI
-#  - slicing with slic3r backend
-#  - printing via USB
+#  - slicing with multiple slicers (slic3r, cura, etc) backend
+#  - printing via USB & network
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode
 #
 # History:
+# 2021/06/28: 0.3.6: support for --post=<post1>[,<post2>...] and --post_<post1>=proc %i -o %o 
 # 2021/06/24: 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
 # 2021/06/21: 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 # 2021/04/06: 0.3.3: experimental support for --slicer=mandoline added
@@ -54,14 +55,15 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.5';
+my $VERSION = '0.3.6';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
 my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
 my $process;         # -- metadata of the process/task itself (e.g. elapsed time per stage)
-my @f;
-my @rm;
+my @f;               # -- files to process
+my @rm;              # -- temp files to remove
+my @post;            # -- post processing
 
 my($me) = ($0=~/\/([^\/]+)$/);
 
@@ -537,7 +539,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --device=<d>            set device, default: $conf{device}
       --slicer=<slicer>       set slicer, default: $conf{slicer}
                                  slic3r, slic3r-pe, prusa, cura-legacy, cura
-                                 slicer4rtn
+                                 slicer4rtn, cura-slicer, 5dmaker
       --printer=<name>        config of printer, default: $conf{printer}
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
@@ -546,6 +548,8 @@ if($cmd eq 'analyze') {          # -- not yet
       --prepend-gcode=...     add manually start-gcode
       --layer-gcode=...       insert gcode at layer change
       --display_update=off    turn built-in display updates off
+      --post_<stage>=...      define a post-processing stage (use '%i' input file, '%o' output file)
+      --post=<stage>[,<stage>]  apply post-processing stage(s)
       part preprocessing:
          --random-placement   place print randomly on the bed
          --auto-center        place print in the center
@@ -1704,6 +1708,24 @@ sub slicePart {
       error("slicer [$conf{slicer}] created no gcode, abort.");
    }
    printf ", filament usage %.2fm",$process->{filament_used}/1000 if($process->{filament_used} && !$conf{quiet});
+   if(defined $conf{post}) {
+      foreach my $p (split(/,/,$conf{post})) {
+         if(defined $conf{"post_$p"}) {
+            my $tmp = "/tmp/print3r-post-$$.gcode";
+            print ", post ($p)" unless($conf{quiet}||$conf{verbose});
+            my(@cmd) = split(/ +/,$conf{"post_$p"});
+            @cmd = map { $_ =~ s/%i/$conf{output}/; $_ =~ s/%o/$tmp/; $_ } @cmd;
+            print ", exec: @cmd\n" if($conf{verbose});
+            execProgram(@cmd);
+            if(!-e $tmp) {
+               error("post processing '$p' (".$conf{"post_$p"}.") did not create any gcode, abort.");
+            }
+            rename($tmp,$conf{output});
+         } else {
+            print "$me: WARN: post processing '$p' is not defined (post_$p) anywhere, ignored.\n";
+         }
+      }
+   }
    print ", done.\n" unless($conf{quiet});
 }
 
@@ -1978,7 +2000,7 @@ sub printGcode {
       $cur_z = $1 if($l=~/^G[01] .*Z(\S+)/);
 
       # -- determine current Z layer nr
-      if($conf{slicer}=~/slicer4rtn/) {      # -- slicer4rtn is non-planar, rely on G-code info
+      if($conf{slicer} eq 'slicer4rtn' || $conf{slicer} eq '5dmaker') {      # -- slicer4rtn & 5dmaker are non-planar, rely on G-code info
          $layer = $1 if($l =~ /^;\s*LAYER:\s*(\d+)/);     
       } else {                               # -- determine via heuristic & nummerical the actual Z layer
          $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
