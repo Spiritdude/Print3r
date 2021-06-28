@@ -23,7 +23,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
-- 0.3.6: support for --post=<post1>[,<post2>...] and --post_<post1>=proc %i -o %o
+- 0.3.6: support for `--post=&lt;post1&gt;[,&lt;post2&gt;...]` and `--post_&lt;post1&gt;=proc %i -o %o`
 - 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
 - 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 - 0.3.3: experimental support for `--slicer=mandoline` added
