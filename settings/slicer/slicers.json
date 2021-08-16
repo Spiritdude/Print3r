@@ -69,5 +69,11 @@
          "stl": 1,
          "5mf": 1
       }
+   },
+   "kirimoto": {
+      "exe": "kirimoto-slicer",
+      "formats": {
+         "stl": 1
+      }
    }
 }
