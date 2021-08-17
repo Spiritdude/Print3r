@@ -86,7 +86,7 @@ See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how
 
 ## Usage
 ```
-Print3r (print3r) 0.3.6 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.3.9 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
@@ -94,8 +94,7 @@ Print3r (print3r) 0.3.6 USAGE: [<options>] <cmd> <file1> [<...>]
       --baudrate=<n>          set baudrate, default: 115200
       --device=<d>            set device, default: /dev/ttyUSB0
       --slicer=<slicer>       set slicer, default: slic3r
-                                 slic3r, slic3r-pe, prusa, cura-legacy, cura
-                                 slicer4rtn, cura-slicer, 5dmaker
+                                 5dmaker, cura, cura-legacy, cura-slicer, cura4, kirimoto, mandoline, prusa, slic3r, slic3r-pe, slicer4rtn
       --printer=<name>        config of printer, default: default
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
@@ -120,13 +119,14 @@ Print3r (print3r) 0.3.6 USAGE: [<options>] <cmd> <file1> [<...>]
       --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
 
    commands:
-      print <file> [...]      print (convert & slice & print) part(s) (.scad, .stl, .obj, .gcode)
-      slice <file> [...]      slice file(s) to gcode (.scad, .stl, .amf, .obj, .3mf)
-      preview <file> [...]    slice & preview (.scad, .stl, .obj, .gcode)
+      print <file> [...]      print (convert & slice & print) part(s) (3mf, 3mj, 5mf, amf, brep, fcstd, iges, obj, off, step, stl)
+      slice <file> [...]      slice file(s) to gcode (same formats as 'print')
+      preview <file> [...]    slice & preview (same formats as 'print')
       render <file> [...]     render an image (use '--output=sample.png' or so)
       gcode <code1> [...]     send gcode lines
       gconsole                start gcode console
       client                  map USB connected printer to network (per device)
+      log [<term>|<#num>]     list log of finished prints, use -v for details or --format=json to dump JSON
       help
 
    examples:
@@ -138,6 +138,9 @@ Print3r (print3r) 0.3.6 USAGE: [<options>] <cmd> <file1> [<...>]
       print3r --printer=ender3 --device=tcp:192.168.0.2 --layer-height=0.25 print cube.stl
       print3r print cube.scad
       print3r --scad print "cube(20)"
+      print3r log
+      print3r log cube
+      print3r log -v '#12'
       print3r gcode 'G28 X Y' 'G1 X60' 'G28 Z'
       print3r gconsole
       == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
