@@ -19,10 +19,12 @@ print3r preview cube.gcode
 - **send Gcode** from command line arguments with **gcode** or console interactively with **gconsole** command
 - **render Gcode** and sliced .stl, .scad into `.png` image with **render** command
 - **preview Gcode** using `yagv` Gcode viewer with **preview** command
+- **log** lists all past finished prints with all settings used
 
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.9: 'log' lists all finished prints, incl. search with term or reference (see help)
 - 0.3.6: support for `--post=<post1>[,<post2>...]` and `--post_<post1>=proc %i -o %o`
 - 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
 - 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used

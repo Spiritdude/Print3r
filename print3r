@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2021/08/17: 0.3.9: if 'freecad2any' exists then .fcstd, .iges, .step and .brep is supported too, 'log' command takes arguments, either search term or '#' leading log entry number (see help)
 # 2021/08/07: 0.3.8: --slicer=kirimoto support added, external helper for FCstd (FreeCAD) support using freecad2any
 # 2021/07/25: 0.3.7: adding 'log' command, supporting --format=json in this context
 # 2021/06/28: 0.3.6: support for --post=<post1>[,<post2>...] and --post_<post1>=proc %i -o %o 
@@ -57,7 +58,7 @@ use IO::Zlib;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.8';
+my $VERSION = '0.3.9';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -581,7 +582,11 @@ if($cmd eq 'analyze') {          # -- not yet
       my $m = 1;
       if(@f>0) {
          $m = 0;
-         $m++, print "match: " if(/$f[0]/i);
+         if($f[0]=~/^#/) {
+            $m++ if($f[0]=~/^#(\d+)/ && $no == $1);
+         } else {
+            $m++, print "match: " if(/$f[0]/i);
+         }
       }
       if($m) {
          my $d = eval { from_json($_) };
@@ -648,14 +653,14 @@ if($cmd eq 'analyze') {          # -- not yet
       --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
 
    commands:
-      print <file> [...]      print (convert & slice & print) part(s) (.scad, .stl, .obj, .gcode)
-      slice <file> [...]      slice file(s) to gcode (.scad, .stl, .amf, .obj, .3mf)
-      preview <file> [...]    slice & preview (.scad, .stl, .obj, .gcode)
+      print <file> [...]      print (convert & slice & print) part(s) (".join(', ',sort keys %formats).")
+      slice <file> [...]      slice file(s) to gcode (same formats as 'print')
+      preview <file> [...]    slice & preview (same formats as 'print')
       render <file> [...]     render an image (use '--output=sample.png' or so)
       gcode <code1> [...]     send gcode lines
       gconsole                start gcode console
       client                  map USB connected printer to network (per device)
-      log                     list log of finished prints, use --format=json to dump JSON
+      log [<term>|<#num>]     list log of finished prints, use -v for details or --format=json to dump JSON
       help
    
    examples:
@@ -667,6 +672,9 @@ if($cmd eq 'analyze') {          # -- not yet
       $me --printer=ender3 --device=tcp:192.168.0.2 --layer-height=0.25 print cube.stl
       $me print cube.scad
       $me --scad print \"cube(20)\"
+      $me log
+      $me log cube
+      $me log -v '#12'
       $me gcode 'G28 X Y' 'G1 X60' 'G28 Z'
       $me gconsole
       == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
