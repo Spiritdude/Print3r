@@ -65,6 +65,7 @@ Primary focus in on **Linux** (Debian, Ubuntu) and alike platforms like FreeBSD 
   - recommended: [install Slic3r PE](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Slic3r-&-Slic3r-PE)
   - recommended: [install CuraEngine](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Cura)
   - [install CuraEngine Legacy](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Cura-Legacy)
+  - recommended: [install FreeCAD2Any](https://github.com/Spiritdude/FreeCAD2Any) which supports FCStd, IGES, STEP and Brep import as well
 
 ## License
 The software is licensed under GPLv3 
