@@ -156,15 +156,14 @@ $| = 1;
 
 $process->{version} = "$NAME $VERSION";
 
-if(!$conf_src{slicer}) {                     # -- slicer not set explicitly
+if(!$conf_src{slicer}) {                     # -- slicer not set explicitly on cli
    my $slicer_base;
-   my $n = 0;
    foreach my $fn (@f) {                     # -- let's look at each file to slice
       next if(!-e $fn);                      # -- we only check if the file actually exists
       my $fext = ($fn =~ /\.(\w+)$/);
       my $warn = 0;
       if(!$slicer->{$conf{slicer}}->{formats}->{$fext}) {     # -- default slicer doesn't support file to slice
-         foreach my $s ($conf{slicer},sort keys %$slicer) {                 # -- let's try to find appropriate slicer
+         foreach my $s ($conf{slicer},sort keys %$slicer) {   # -- let's try to find appropriate slicer (first hit)
             if($slicer->{$s}->{formats}->{$fext}) {
                if($slicer_base && $slicer_base ne $s) {
                   $warn++, print "$me: WARN: you mix multiple formats for $fn ($fext) but contradicting slicer ($slicer_base chosen, $s needed)\n" if($warn<=0);
@@ -172,8 +171,6 @@ if(!$conf_src{slicer}) {                     # -- slicer not set explicitly
                $conf{slicer} = $slicer_base = $s unless($slicer_base);
                last;
             }
-            $n++;
-            #last if($slicer_base);
          }
       }
    }
