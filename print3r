@@ -165,14 +165,12 @@ if(!$conf_src{slicer}) {                     # -- slicer not set explicitly
       my $warn = 0;
       if(!$slicer->{$conf{slicer}}->{formats}->{$fext}) {     # -- default slicer doesn't support file to slice
          foreach my $s ($conf{slicer},sort keys %$slicer) {                 # -- let's try to find appropriate slicer
-            foreach my $ext (sort keys %{$slicer->{$s}->{formats}}) {
-               if($fn =~ /\.$ext$/i) {
-                  if($slicer_base && $slicer_base ne $s) {
-                     $warn++, print "$me: WARN: you mix multiple formats for $fn ($ext) but contradicting slicer ($slicer_base chosen, $s needed)\n" if($warn<=0);
-                  }
-                  $conf{slicer} = $slicer_base = $s unless($slicer_base);
-                  last;
+            if($slicer->{$s}->{formats}->{$fext}) {
+               if($slicer_base && $slicer_base ne $s) {
+                  $warn++, print "$me: WARN: you mix multiple formats for $fn ($fext) but contradicting slicer ($slicer_base chosen, $s needed)\n" if($warn<=0);
                }
+               $conf{slicer} = $slicer_base = $s unless($slicer_base);
+               last;
             }
             $n++;
             #last if($slicer_base);
