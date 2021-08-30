@@ -55,6 +55,7 @@ use XML::Simple;                    # -- reading .amf (XML)
 use File::Which;
 use IO::Socket::INET;
 use IO::Zlib;
+use Cwd;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
@@ -726,6 +727,7 @@ sub scadToSTL {
       my $tmp = "/tmp/$me-$$-exec.scad";
       open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
       foreach my $l (split(/[,\:]/,$conf{scadlib})) {
+         $l = cwd()."/".$l unless($l =~ /^\//);
          print $fh "include <$l>\n";
       }
       $fno = $fn;
