@@ -79,6 +79,7 @@ $conf{baudrate} = 115200;
 $conf{auto_center} = '\1';
 $conf{gviewer} = 'yagv';
 $conf{serialif} = 'serialport';
+$conf{scadimport} = 'use';
 
 my @paths = ('./settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/usr/share/print3r");
 
@@ -88,7 +89,7 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
    'auto_center'=>1,'random_placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
-   'timeout'=>1,'scad'=>1,'scadlib'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
+   'timeout'=>1,'scad'=>1,'scadlib'=>1,'scadimport'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
    'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1);
 
 # -- all formats we support for slicers (scad, sccad aside)
@@ -630,6 +631,7 @@ if($cmd eq 'analyze') {          # -- not yet
       --output=<file>         define output file for 'slice' and 'render' command
       --scad                  consider all arguments as actual OpenSCAD code (not files)
       --scadlib=<files>       define OpenSCAD files separated by \",\" or \":\"
+                              by default '$conf{scadimport} <file>', change with --scadimport=include
       --prepend-gcode=...     add manually start-gcode
       --layer-gcode=...       insert gcode at layer change
       --display_update=off    turn built-in display updates off
@@ -728,7 +730,7 @@ sub scadToSTL {
       open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
       foreach my $l (split(/[,\:]/,$conf{scadlib})) {
          $l = cwd()."/".$l unless($l =~ /^\//);
-         print $fh "include <$l>\n";
+         print $fh "$conf{scadimport} <$l>\n";
       }
       $fno = $fn;
       $fn .= ";" unless($fn=~/;\s*$/);
