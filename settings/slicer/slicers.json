@@ -2,7 +2,6 @@
    "cura" : {
       "exe" : "CuraEngine",
       "formats" : {
-         "3mf" : 1,
          "stl" : 1
       }
    },
@@ -15,8 +14,15 @@
    "cura4" : {
       "exe" : "CuraEngine4",
       "formats" : {
-         "3mf" : 1,
          "stl" : 1
+      }
+   },
+   "curax" : {
+      "exe" : "CuraEngineX",
+      "formats" : {
+         "stl" : 1,
+         "obj" : 1,
+         "off" : 1
       }
    },
    "prusa" : {
@@ -53,7 +59,6 @@
    "cura-slicer" : {
       "exe" : "cura-slicer",
       "formats" : {
-         "3mf" : 1,
          "stl" : 1
       }
    },
