@@ -88,7 +88,7 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
-   'auto_center'=>1,'random_placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
+   'auto_center'=>1,'random_placement'=>1,'placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
    'timeout'=>1,'scad'=>1,'scadlib'=>1,'scadimport'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
    'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1);
 
@@ -146,6 +146,9 @@ foreach (@ARGV) {                # -- parse command-line arguments
 
 delete $conf{auto_center} if($conf{random_placement});                                # -- resolve contradictions
 delete $conf{random_placement}, delete $conf{auto_center} if($conf{translate});       # --    "            "
+delete $conf{random_placement}, delete $conf{auto_center} if($conf{placement});
+$conf{auto_center} = "\0" if($conf{placement}eq'center');
+$conf{random_placement} = "\0" if($conf{placement}eq'random');
 
 $conf{printer} = 'default' if(!$conf{printer}); # -- no printer defined, let's get 'default.ini' if available (should be)
 
