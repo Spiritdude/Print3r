@@ -1,17 +1,19 @@
 NAME=Print3r
-VERSION=0.3.8
+VERSION=0.3.9
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share
 CMD=print3r
 NICK=print3r
+CPAN=cpan
 
 all::
 	@echo "make requirements install deinstall"
+	@echo "-- on low RAM systems use 'apt install cpanminus' and then 'make CPAN=cpanm requirements'"
 
 requirements::
 	sudo apt install libexpat-dev libcurses-perl libncurses5-dev libreadline-dev
-	sudo cpan File::Which IO::Zlib Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D 
+	sudo ${CPAN} File::Which IO::Zlib Time::HiRes Device::SerialPort XML::Simple JSON IO::Termios Term::ReadLine::Gnu Linux::Termios2 Algorithm::BinPack::2D 
 	sudo apt install libgd-perl ser2net socat slic3r
 	sudo apt install yagv
 
