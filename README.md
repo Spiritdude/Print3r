@@ -24,6 +24,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+- 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
 - 0.3.9: 'log' lists all finished prints, incl. search with term or reference (see help)
 - 0.3.6: support for `--post=<post1>[,<post2>...]` and `--post_<post1>=proc %i -o %o`
 - 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
@@ -86,7 +87,7 @@ See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how
 
 ## Usage
 ```
-Print3r (print3r) 0.3.9 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.3.10 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
@@ -116,6 +117,7 @@ Print3r (print3r) 0.3.9 USAGE: [<options>] <cmd> <file1> [<...>]
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
          --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
+      --uid=<id>              define part unique id (default: auto generated uid)
       --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
 
    commands:
@@ -139,7 +141,7 @@ Print3r (print3r) 0.3.9 USAGE: [<options>] <cmd> <file1> [<...>]
       print3r print cube.scad
       print3r --scad print "cube(20)"
       print3r log
-      print3r log cube
+      print3r --output=uid,layer_height log cube
       print3r log -v '#12'
       print3r gcode 'G28 X Y' 'G1 X60' 'G28 Z'
       print3r gconsole
