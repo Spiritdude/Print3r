@@ -24,7 +24,7 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
-- 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
+- 0.3.10: each successful(ended) logged print contains new or `--uid=...` uid (to track printed parts)
 - 0.3.9: 'log' lists all finished prints, incl. search with term or reference (see help)
 - 0.3.6: support for `--post=<post1>[,<post2>...]` and `--post_<post1>=proc %i -o %o`
 - 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
