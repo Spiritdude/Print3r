@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2021/10/14: 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
 # 2021/08/17: 0.3.9: if 'freecad2any' exists then .fcstd, .iges, .step and .brep is supported too, 'log' command takes arguments, either search term or '#' leading log entry number (see help)
 # 2021/08/07: 0.3.8: --slicer=kirimoto support added, external helper for FCstd (FreeCAD) support using freecad2any
 # 2021/07/25: 0.3.7: adding 'log' command, supporting --format=json in this context
@@ -59,7 +60,7 @@ use Cwd;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.9';
+my $VERSION = '0.3.10';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -601,6 +602,14 @@ if($cmd eq 'analyze') {          # -- not yet
                   $dt > 60*60*24*365*1.5 ? sprintf("%.1f years",$dt/(60*60*24*365)) : $dt > 60*60*24*30*3 ? sprintf("%d months",$dt/(60*60*24*30)) : sprintf("%d days",$dt/(60*60*24)), $d->{duration}/60);
                print sprintf(" on <%s>",$d->{settings}->{printer}) if(defined $d->{settings}->{printer});
                print sprintf(", %.2fm filament",$d->{process}->{filament_used}/1000) if(defined $d->{process}->{filament_used});
+               if($conf{output}) {
+                  my $e;
+                  foreach my $k (split(/,/,$conf{output})) {
+                     my $v = defined $d->{settings}->{$k} ? $d->{settings}->{$k} : defined $d->{process}->{$k} ? $d->{process}->{$k} : $d->{$k};
+                     $e->{$k} = $v if(defined $v);
+                  }
+                  print ": ".toJSON($e,{pretty=>0}) if($e);
+               }
                $sum->{filament} += $d->{process}->{filament_used} if($d->{process});
                $sum->{duration} += $d->{duration};
                $sum->{jobs}++;
@@ -651,6 +660,7 @@ if($cmd eq 'analyze') {          # -- not yet
          --rotate=<x>,<y>,<z>    rotate x,y,z
          --translate=<x>,<y>,<z> translate x,y,z
          --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
+      --uid=<id>              define part unique id (default: auto generated uid)
       --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
 
    commands:
@@ -674,7 +684,7 @@ if($cmd eq 'analyze') {          # -- not yet
       $me print cube.scad
       $me --scad print \"cube(20)\"
       $me log
-      $me log cube
+      $me --output=uid,layer_height log cube
       $me log -v '#12'
       $me gcode 'G28 X Y' 'G1 X60' 'G28 Z'
       $me gconsole
@@ -1647,6 +1657,16 @@ sub slicePart {
       } else {
          print "$me: WARN: no base.ini found in @paths\n";
       }
+      foreach my $k (sort keys %conf) {      # -- pass <slicer>.* native args by command line
+         my $k0 = $k;
+         if($k =~ s/^$conf{slicer}\.//) {
+            my $k_ = $k;
+            $k_ =~ s/_/-/g;
+            my $v = $conf{$k0};
+            $v =~ s/\n/\\n/g;
+            push(@a,"--$k_=$v") 
+         }
+      }
       my $c;
       foreach my $k (sort keys %conf) {
          next if($internOption{$k});
@@ -2264,7 +2284,7 @@ sub printGcode {
    $process->{time}->{print} = time()-$st;
    mkdir $ENV{HOME}."/.print3r" unless(-e $ENV{HOME}."/.print3r");
    open(my $lfh,">>",$ENV{HOME}."/.print3r/log.json");
-   print $lfh toJSON({settings=>\%conf,time=>time(),file_list=>\@f_in,part=>$fn,size=>(stat($fn))[7],process=>$process,duration=>$process->{time}->{print}},{pretty=>0})."\n";
+   print $lfh toJSON({settings=>\%conf,time=>time(),file_list=>\@f_in,part=>$fn,size=>(stat($fn))[7],process=>$process,duration=>$process->{time}->{print},uid=>defined $conf{uid}?$conf{uid}:uid()},{pretty=>0})."\n";
    close $lfh;
 }
 
@@ -3354,6 +3374,10 @@ sub gconsole {
    } else {
       return ($cmd,0);
    }
+}
+
+sub uid {      # -- 00000000-00000000-00000000-00000000
+   return join("-",map { sprintf("%08x",(rand()*(1<<32))&0xffffffff) } (0..3));
 }
 
 # ---------------------------------------------------------------------------------------------------------------
