@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2021/10/23: 0.3.11: experimental support for zplus-slicer (--slicer=zplus)
 # 2021/10/14: 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
 # 2021/08/17: 0.3.9: if 'freecad2any' exists then .fcstd, .iges, .step and .brep is supported too, 'log' command takes arguments, either search term or '#' leading log entry number (see help)
 # 2021/08/07: 0.3.8: --slicer=kirimoto support added, external helper for FCstd (FreeCAD) support using freecad2any
@@ -1376,7 +1377,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/||$conf{slicer}=~/mandoline/||$conf{slicer}eq'5dmaker')) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/||$conf{slicer}=~/(mandoline|zplus)/||$conf{slicer}eq'5dmaker')) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1635,7 +1636,7 @@ sub slicePart {
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a);
    
-   } elsif($conf{slicer}eq'cura-slicer'||$conf{slicer}eq'5dmaker'||$conf{slicer}eq'kirimoto') {    # -- cura-slicer, 5dmaker, kirimoto
+   } elsif($conf{slicer}eq'cura-slicer'||$conf{slicer}eq'5dmaker'||$conf{slicer}eq'kirimoto'||$conf{slicer}eq'zplus') {    # -- cura-slicer, 5dmaker, kirimoto
       if(defined $conf{output}) {
          unlink $conf{output};
          push(@a,"-o",$conf{output});

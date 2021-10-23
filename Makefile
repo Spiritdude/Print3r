@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.3.10
+VERSION=0.3.11
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share
@@ -54,7 +54,7 @@ examples::
 	./print3r --fill-density=0 --output=examples/benchy.png render Parts/3DBenchy.stl
 	./print3r --fill-density=0 --scale=0,0,150mm --output=examples/benchy-scaled.png render Parts/3DBenchy.stl
 
-logdb::
+logdb::	logdb-setup
 	sqltk --uri=pg://print3r --input=jsonl --filter=ascii --keys=@ -- "insert into parts (data) values (?)" < ~/.print3r/log.json
 
 logdb-setup::

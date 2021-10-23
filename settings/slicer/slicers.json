@@ -80,5 +80,11 @@
       "formats": {
          "stl": 1
       }
+   },
+   "zplus": {
+      "exe": "zplus-slicer",
+      "formats": {
+         "stl": 1
+      }
    }
 }
