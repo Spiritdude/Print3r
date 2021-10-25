@@ -61,7 +61,7 @@ use Cwd;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.10';
+my $VERSION = '0.3.11';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
