@@ -156,6 +156,18 @@ $conf{printer} = 'default' if(!$conf{printer}); # -- no printer defined, let's g
 
 if($conf{version}) {
    print "$NAME $VERSION\n";
+   if($conf{verbose}) {
+      my(@apps) = map { $slicer->{$_}->{exe} } keys %$slicer;
+      #push(@apps,$conf{gcodeview});
+      foreach my $a (@apps) {
+         my $v = `$a --version 2> /dev/null`;
+         chop($v);
+         $v =~ s/\n.*//mg;
+         $v = '?.?.?' if(!($v=~/\d\./));
+         $v = "$a $v" if($v=~/^\d\./ || $v =~ /^\?/);
+         print "- $v ($a)\n";
+      }
+   }   
    exit 0;
 }
 
@@ -1819,7 +1831,7 @@ sub slicePart {
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
    }
-     
+
    $process->{time}->{slice} = time()-$st;
 
    if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura or slic3r*
@@ -1880,6 +1892,7 @@ sub slicePart {
       }
    }
    print ", done.\n" unless($conf{quiet});
+   #($exit,$version) = execProgram($slicer->{$conf{slicer}}->{exe}||$conf{slicer},"--version");  
 }
 
 sub processGcodeLine {
