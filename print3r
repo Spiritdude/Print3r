@@ -157,7 +157,7 @@ $conf{printer} = 'default' if(!$conf{printer}); # -- no printer defined, let's g
 if($conf{version}) {
    print "$NAME $VERSION\n";
    if($conf{verbose}) {
-      foreach my $v (versions()) {
+      foreach my $v (@{versions()}) {
          print "- $v\n";
       }
    }   
@@ -3768,7 +3768,7 @@ sub versions {
       $v = "$a $v" if($v=~/^\d\./ || $v =~ /^\?/);
       push(@vs,$v);
    }
-   return @vs;
+   return \@vs;
 }
 
 # ---------------------------------------------------------------------------------------------------------------
