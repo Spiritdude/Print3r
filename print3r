@@ -156,6 +156,11 @@ $conf{printer} = 'default' if(!$conf{printer}); # -- no printer defined, let's g
 
 if($conf{version}) {
    print "$NAME $VERSION\n";
+   if($conf{verbose}) {
+      foreach my $v (versions()) {
+         print "- $v\n";
+      }
+   }   
    exit 0;
 }
 
@@ -1819,7 +1824,7 @@ sub slicePart {
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
    }
-     
+
    $process->{time}->{slice} = time()-$st;
 
    if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura or slic3r*
@@ -1880,6 +1885,7 @@ sub slicePart {
       }
    }
    print ", done.\n" unless($conf{quiet});
+   #($exit,$version) = execProgram($slicer->{$conf{slicer}}->{exe}||$conf{slicer},"--version");  
 }
 
 sub processGcodeLine {
@@ -2285,7 +2291,19 @@ sub printGcode {
    $process->{time}->{print} = time()-$st;
    mkdir $ENV{HOME}."/.print3r" unless(-e $ENV{HOME}."/.print3r");
    open(my $lfh,">>",$ENV{HOME}."/.print3r/log.json");
-   print $lfh toJSON({settings=>\%conf,time=>time(),file_list=>\@f_in,part=>$fn,size=>(stat($fn))[7],process=>$process,duration=>$process->{time}->{print},uid=>defined $conf{uid}?$conf{uid}:uid()},{pretty=>0})."\n";
+   print $lfh toJSON({
+      version => "$NAME $VERSION",
+      internals => { versions => versions() },
+      settings => \%conf,
+      time => time(),
+      file_list => \@f_in,
+      part => $fn,
+      size => (stat($fn))[7],
+      process => $process,
+      duration => $process->{time}->{print},
+      uid => defined $conf{uid}?$conf{uid}:uid()
+   },{pretty=>0})."\n";
+   
    close $lfh;
 }
 
@@ -3736,6 +3754,21 @@ sub logReference {
       $n++;
    }
    close $fh;
+}
+
+sub versions {
+   my(@vs);
+   my(@apps) = map { $slicer->{$_}->{exe} } keys %$slicer;
+   #push(@apps,$conf{gcodeview});
+   foreach my $a (@apps) {
+      my $v = `$a --version 2> /dev/null`;
+      chop($v);
+      $v =~ s/\n.*//mg;  
+      $v = '?.?.?' if(!($v=~/\d\./));
+      $v = "$a $v" if($v=~/^\d\./ || $v =~ /^\?/);
+      push(@vs,$v);
+   }
+   return @vs;
 }
 
 # ---------------------------------------------------------------------------------------------------------------
