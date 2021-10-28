@@ -3758,17 +3758,27 @@ sub logReference {
 
 sub versions {
    my(@vs);
-   my(@apps) = map { $slicer->{$_}->{exe} } keys %$slicer;
-   #push(@apps,$conf{gcodeview});
-   foreach my $a (@apps) {
-      my $v = `$a --version 2> /dev/null`;
-      chop($v);
-      $v =~ s/\n.*//mg;  
-      $v = '?.?.?' if(!($v=~/\d\./));
-      $v = "$a $v" if($v=~/^\d\./ || $v =~ /^\?/);
-      push(@vs,$v);
+   my $fnc = "$ENV{HOME}/.print3r/versions.json";
+
+   # -- cache it for 24 hrs, as probing is slow (can take several seconds)
+   if((!-e "$ENV{HOME}/.print3r/versions.json") || (stat($fnc))[9] < time()-24*60*60) {
+      my(@apps) = map { $slicer->{$_}->{exe} } keys %$slicer;
+      push(@apps,'openscad','scriptcad');    # -- TODO: openscad reports version to stderr
+      #push(@apps,$conf{gviewer}) if($conf{gviewer});
+      foreach my $a (@apps) {
+         my $v = `$a --version 2> /dev/null`;
+         chop($v);
+         $v =~ s/\n.*//mg;  
+         $v = '?.?.?' if(!($v=~/\d\./));
+         $v = "$a $v" if($v=~/^\d\./ || $v =~ /^\?/);
+         push(@vs,$v);
+      }
+      writeJSON($fnc,\@vs);
+      return \@vs;
+   } else {
+      my $v = readJSON($fnc);
+      return $v;
    }
-   return \@vs;
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -3782,6 +3792,25 @@ sub toJSON {
    my $j = JSON->new->allow_nonref->allow_blessed->canonical;
    $j = $j->pretty unless($a&&!$a->{pretty});
    return $j->encode($v);
+}
+
+sub readJSON {
+   my($fn) = @_;
+   local $/;
+   open(my $fh,"<",$fn);
+   my($d) = <$fh>;
+   close $fh;
+   return fromJSON($d);
+}
+
+sub writeJSON { 
+   my($fn,$d) = @_;
+   if(open(my $fh,">",$fn)) {
+      print $fh toJSON($d);
+      close $fh;
+   } else {
+      die "$NAME: ERROR: cannot write to $fn: $@\n";
+   }
 }
 
 # ----------------------------------------------------------------------------------------------------------------
