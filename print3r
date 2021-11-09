@@ -2065,7 +2065,7 @@ sub printGcode {
    my $tot_e = 0;
    my $cur_e = 0;
    my $layer = 0;
-
+   
    my $cpath;           # -- find slicer base settings; cpath contains path
    foreach my $p (@paths) {
       $cpath = $p, last if(-e "$p/gcode");
@@ -2148,18 +2148,16 @@ sub printGcode {
       $eta = (($st + $eta) - time()) / 60;          # -- relative
       my $now = (time()-$st)/60;
 
-      my $eta_e;
-
-      if($cur_e && $st_e) {      # -- estimated arrival/end based on extrusion (without heating up)
-         $eta_e = (time()-$st_e) / $cur_e * $process->{filament_used};
-         $eta_e = (($st_e + $eta_e) - time()) / 60;
+      if($cur_e && $st_e && $process->{filament_used}) {      # -- estimated arrival/end based on extrusion (without heating up), more precise but depends on "filament_used" data
+         $eta = (time()-$st_e) / $cur_e * $process->{filament_used};
+         $eta = (($st_e + $eta) - time()) / 60;
       }
 
       # -- rudimentary catch layer changes, if small change then it's a layer change
       $cur_z = $1 if($l=~/^G[01] .*Z(\S+)/);
 
       # -- determine current Z layer nr
-      if($conf{slicer} eq 'slicer4rtn' || $conf{slicer} eq '5dmaker') {      # -- slicer4rtn & 5dmaker are non-planar, rely on G-code info
+      if($process->{non_planar} || $conf{slicer} eq 'slicer4rtn' || $conf{slicer} eq '5dmaker' || $conf{slicer} eq 'zplus') {      # -- slicer4rtn & 5dmaker are non-planar, rely on G-code info
          $layer = $1 if($l =~ /^;\s*LAYER:\s*(\d+)/);     
       } else {                               # -- determine via heuristic & nummerical the actual Z layer
          $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
@@ -2179,10 +2177,8 @@ sub printGcode {
          if($status ne 'printing') {
             printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
          } else {
-            #printf "$me: print: %dh %02dm elapsed, eta %dh %02dm, %.1f%% complete, z=%.2fmm, layer #%d, filament %.2fm%s",
-            #   int($now/60),$now%60,int($eta/60),$eta%60,100*$pos/$pos_tot,$cur_z,$layer,$cur_e/1000,$conf{verbose}?"\n":"\r"
             printf "$me: print: %dh %02dm elapsed,%s %.1f%% complete, z=%.2fmm, layer #%d, filament %.2fm%s",
-               int($now/60),$now%60,$eta_e?sprintf(" eta %dh %02dm,",int($eta_e/60),$eta_e%60):"",100*$pos/$pos_tot,$cur_z,$layer,$cur_e/1000,$conf{verbose}?"\n":"\r"
+               int($now/60),$now%60,$eta?sprintf(" eta %dh %02dm,",int($eta/60),$eta%60):"",100*$pos/$pos_tot,$cur_z,$layer,$cur_e/1000,$conf{verbose}?"\n":"\r"
          }
       }
 
@@ -2203,7 +2199,9 @@ sub printGcode {
          layerScript();
          $l = $conf{layer_gcode} if($conf{layer_gcode});
       }
-
+      
+      $process->{non_planar}++ if(/;\s*NON_PLANAR/||/;\s*NONPLANAR/);
+      
       next if($l=~/^;/ || $l=~/^\s*$/);     # -- comments or empty lines are not sent
 
       if(0 && $l=~/^T\d+/ && $conf{toolmap}) {
@@ -2268,8 +2266,7 @@ sub printGcode {
       
       if($conf{display_update}ne'off' && time()-$lst>3) {           # -- update printer display
          printerSend($com,sprintf("M117 %d%% eta %s l#%d%s\n",100*$pos/$pos_tot,
-            #$eta > 36*60 ? sprintf("%.1fdy",$eta/60/24) : $eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m",
-            $eta_e ? ($eta_e > 60 ? sprintf("%.1fh",$eta_e/60) : int($eta_e)."m" ) : "-",
+            $eta ? ($eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m" ) : "-",
             $layer,defined $process->{tool}?" T".$process->{tool}:""));
          printerResponse($com);
          #printerSend($com,"M31\n");
@@ -3590,7 +3587,7 @@ sub openSerial {
       } elsif(!defined $printer->{uuid}) {
          print "$me: WARN: retrieve of machine-uuid (UUID) failed, ignored\n";
       } else {
-         print "$me: authenticated $conf{machine_name} ($conf{machine_uuid}) at $conf{device}\n";
+         print "$me: authenticated \"$conf{machine_name}\" ($conf{machine_uuid}) at $conf{device}\n";
       }
    }
    
