@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2021/11/09: 0.3.12: more printer info in log-file, firmware and M501 output
 # 2021/10/23: 0.3.11: experimental support for zplus-slicer (--slicer=zplus)
 # 2021/10/14: 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
 # 2021/08/17: 0.3.9: if 'freecad2any' exists then .fcstd, .iges, .step and .brep is supported too, 'log' command takes arguments, either search term or '#' leading log entry number (see help)
@@ -61,7 +62,7 @@ use Cwd;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.11';
+my $VERSION = '0.3.12';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -585,45 +586,54 @@ if($cmd eq 'analyze') {          # -- not yet
    }
    my $sum;
    my $no = 1;
+   my(@ma);
+   my $disp = sub {
+      my($js,$no) = @_;
+      my $d = eval { from_json($js) };
+      if($d && ref($d) eq 'HASH') {
+         print to_json($d,{pretty=>1, canonical=>1}) if($conf{verbose} || $conf{format}eq'json');
+         if($conf{format}ne'json') {
+            print "#$no: ";
+            print join(", ",@{$d->{file_list}}).($d->{settings} && $d->{settings}->{multiply_part}?" x $d->{settings}->{multiply_part}":"") if($d->{file_list});
+            my @t = localtime($d->{time});
+            my $dt = time()-$d->{time};
+            print sprintf(": %04d/%02d/%02d %02d:%02d:%02d (%s ago): %d mins printing",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0],
+               $dt > 60*60*24*365*1.5 ? sprintf("%.1f years",$dt/(60*60*24*365)) : $dt > 60*60*24*30*3 ? sprintf("%d months",$dt/(60*60*24*30)) : sprintf("%d days",$dt/(60*60*24)), $d->{duration}/60);
+            print sprintf(" on <%s>",$d->{settings}->{printer}) if(defined $d->{settings}->{printer});
+            print sprintf(", %.2fm filament",$d->{process}->{filament_used}/1000) if(defined $d->{process}->{filament_used});
+            if($conf{output}) {
+               my $e;
+               foreach my $k (split(/,/,$conf{output})) {
+                  my $v = defined $d->{settings}->{$k} ? $d->{settings}->{$k} : defined $d->{process}->{$k} ? $d->{process}->{$k} : $d->{$k};
+                  $e->{$k} = $v if(defined $v);
+               }
+               print ": ".toJSON($e,{pretty=>0}) if($e);
+            }
+            $sum->{filament} += $d->{process}->{filament_used} if($d->{process});
+            $sum->{duration} += $d->{duration};
+            $sum->{jobs}++;
+            print "\n";
+         }
+      }
+   };
    while(<$fh>) {
       my $m = 1;
       if(@f>0) {
          $m = 0;
-         if($f[0]=~/^#/) {
-            $m++ if($f[0]=~/^#(\d+)/ && $no == $1);
+         if($f[0]=~/^#(-?\d+)/) {
+            $m++ if($1 >= 0 && $no == $1);
+            push(@ma,{data=>$_,no=>$no}), @ma > -$1 ? shift(@ma):0 if($1 < 0);
          } else {
             $m++, print "match: " if(/$f[0]/i);
          }
       }
-      if($m) {
-         my $d = eval { from_json($_) };
-         if($d && ref($d) eq 'HASH') {
-            print to_json($d,{pretty=>1, canonical=>1}) if($conf{verbose} || $conf{format}eq'json');
-            if($conf{format}ne'json') {
-               print "#$no: ";
-               print join(", ",@{$d->{file_list}}).($d->{settings} && $d->{settings}->{multiply_part}?" x $d->{settings}->{multiply_part}":"") if($d->{file_list});
-               my @t = localtime($d->{time});
-               my $dt = time()-$d->{time};
-               print sprintf(": %04d/%02d/%02d %02d:%02d:%02d (%s ago): %d mins printing",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0],
-                  $dt > 60*60*24*365*1.5 ? sprintf("%.1f years",$dt/(60*60*24*365)) : $dt > 60*60*24*30*3 ? sprintf("%d months",$dt/(60*60*24*30)) : sprintf("%d days",$dt/(60*60*24)), $d->{duration}/60);
-               print sprintf(" on <%s>",$d->{settings}->{printer}) if(defined $d->{settings}->{printer});
-               print sprintf(", %.2fm filament",$d->{process}->{filament_used}/1000) if(defined $d->{process}->{filament_used});
-               if($conf{output}) {
-                  my $e;
-                  foreach my $k (split(/,/,$conf{output})) {
-                     my $v = defined $d->{settings}->{$k} ? $d->{settings}->{$k} : defined $d->{process}->{$k} ? $d->{process}->{$k} : $d->{$k};
-                     $e->{$k} = $v if(defined $v);
-                  }
-                  print ": ".toJSON($e,{pretty=>0}) if($e);
-               }
-               $sum->{filament} += $d->{process}->{filament_used} if($d->{process});
-               $sum->{duration} += $d->{duration};
-               $sum->{jobs}++;
-               print "\n";
-            }
-         }
-      }
+      &$disp($_,$no) if($m);
       $no++;
+   }
+   if(@ma) { 
+      foreach (@ma) {
+         &$disp($_->{data},$_->{no});
+      }
    }
    close $fh;
    print sprintf("== totals: %d jobs, %dm filament, %d days printing\n",$sum->{jobs},$sum->{filament}/1000,$sum->{duration}/60/60/24) if($conf{format}ne'json');
@@ -678,6 +688,8 @@ if($cmd eq 'analyze') {          # -- not yet
       gconsole                start gcode console
       client                  map USB connected printer to network (per device)
       log [<term>|<#num>]     list log of finished prints, use -v for details or --format=json to dump JSON
+                                 use --output=<k>[,<k1>] to list particular keys
+                                 if num is negative, the last entries are shown, e.g. '#-5'
       help
    
    examples:
@@ -2292,6 +2304,7 @@ sub printGcode {
       version => "$NAME $VERSION",
       internals => { versions => versions() },
       settings => \%conf,
+      printer => $printer,
       time => time(),
       file_list => \@f_in,
       part => $fn,
@@ -3568,16 +3581,16 @@ sub openSerial {
       # -- slurp manifest ... (whatever is left to get)
    }});
    
+   # -- retrieve (again) the firmware version & uuid of the machine
+   foreach my $gcode ("M115\n","M122\n") {                 # -- Marlin uses M115, RRF uses M122 to report UUID
+      sleep 0.8;
+      printerSend($com,$gcode);
+      my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/UUID\s*:\s*(\S+)/);
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/Board ID\s*:\s*(\S+)/);
+   }
+
    if($uuid) {        # -- metadata like UUID requested
-      if(!defined $printer->{uuid}) {
-         foreach my $gcode ("M115\n","M122\n") {                 # -- Marlin uses M115, RRF uses M122 to report UUID
-            sleep 0.8;
-            printerSend($com,$gcode);
-            my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
-            $printer->{uuid} = $1, last if($resp=~/UUID\s*:\s*(\S+)/);
-            $printer->{uuid} = $1, last if($resp=~/Board ID\s*:\s*(\S+)/);
-         }
-      }
       if($printer->{uuid} && $printer->{uuid} ne $uuid) {
          if($conf{device}) {
             error("UUID mismatch: '$conf{machine_uuid}' != '$printer->{uuid}', abort\n");
@@ -3590,7 +3603,14 @@ sub openSerial {
          print "$me: authenticated \"$conf{machine_name}\" ($conf{machine_uuid}) at $conf{device}\n";
       }
    }
-   
+
+   foreach my $gcode ("M503\n") {      # -- read out EEPROM/settings
+      sleep 0.8;
+      printerSend($com,$gcode);
+      my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
+      $printer->{firmware_eeprom} = $resp;
+   }
+
    return $com;
 }
 
