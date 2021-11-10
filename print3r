@@ -604,7 +604,7 @@ if($cmd eq 'analyze') {          # -- not yet
             if($conf{output}) {
                my $e;
                foreach my $k (split(/,/,$conf{output})) {
-                  my $v = defined $d->{settings}->{$k} ? $d->{settings}->{$k} : defined $d->{process}->{$k} ? $d->{process}->{$k} : $d->{$k};
+                  my $v = defined $d->{settings}->{$k} ? $d->{settings}->{$k} : defined $d->{process}->{$k} ? $d->{process}->{$k} : defined $d->{printer}->{$k} ? $d->{printer}->{$k} : $d->{$k};
                   $e->{$k} = $v if(defined $v);
                }
                print ": ".toJSON($e,{pretty=>0}) if($e);
@@ -2174,13 +2174,17 @@ sub printGcode {
       } else {                               # -- determine via heuristic & nummerical the actual Z layer
          $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
       }
-      $pos_t = 'abs' if(/^G90/); 
-      $pos_t = 'rel' if(/^G91/); 
+      $pos_t = 'abs' if(/^G90\b?$/||/^M82\b?$/); 
+      $pos_t = 'rel' if(/^G91\b?$/||/^M83\b?$/); 
+
+      # -- $tot_e is the absolute extrusion length (regardless of extrusion mode abs/rel)
+      #    $cur_e is also in absolute extrusion length (easier to calculate)
       if($pos_t eq 'abs') {
-         $tot_e = $cur_e if($l=~/^G92 E0/);
-         $status = "printing", $cur_e = $tot_e + $1*1, $st_e = $st_e ? $st_e : time() if($l=~/G1.*E(\-?[\d\.]+)/);
+         $tot_e = $cur_e, $cur_e = $1*1 + $tot_e if($l=~/^G92 E(-?[\d\.]+)/);
+         $status = "printing", $cur_e = $1*1 + $tot_e, $st_e = $st_e ? $st_e : time() if($l=~/G1\s.*E(\-?[\d\.]+)/);
       } else {
-         $status = "printing", $cur_e += $1*1, $st_e = $st_e ? $st_e : time() if($l=~/G1.*E(\-?[\d\.]+)/);
+         $tot_e = $cur_e, $cur_e = $1*1 + $tot_e if($l=~/^G92 E(-?[\d\.]+)/);
+         $status = "printing", $cur_e += $1*1, $st_e = $st_e ? $st_e : time() if($l=~/G1\s.*E(\-?[\d\.]+)/);
       }
       $status = "heating" if($l=~/^M109/);
       
@@ -2189,7 +2193,7 @@ sub printGcode {
          if($status ne 'printing') {
             printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
          } else {
-            printf "$me: print: %dh %02dm elapsed,%s %.1f%% complete, z=%.2fmm, layer #%d, filament %.2fm%s",
+            printf "$me: print: %dh %02dm elapsed,%s %.1f%% complete, z=%.2fmm, layer #%d, filament %.2fm  %s",
                int($now/60),$now%60,$eta?sprintf(" eta %dh %02dm,",int($eta/60),$eta%60):"",100*$pos/$pos_tot,$cur_z,$layer,$cur_e/1000,$conf{verbose}?"\n":"\r"
          }
       }
