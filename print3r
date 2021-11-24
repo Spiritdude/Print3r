@@ -1352,7 +1352,7 @@ sub slicePart {
    }
 
    # -- multiply parts (slic3r supports it built-in, otherwise we have to duplicate & reposition parts)
-   if(!($conf{slicer}=~/slic3r/) && $conf{multiply_part}>1 ) {
+   if(!($conf{slicer}=~/(slic3r|prusa|super)/) && $conf{multiply_part}>1 ) {
       my @pa;
       foreach my $f (ref($fn)?@$fn:$fn) {
          push(@pa,partRead($f));
@@ -1380,7 +1380,7 @@ sub slicePart {
       push(@rm,@fx);
    }
 
-   if((!$conf{stick_position}) && !($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}eq'super') && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
+   if((!$conf{stick_position}) && !($conf{slicer}=~/(slic3r|prusa|super)/) && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
       print ", arrange ",scalar @{$fn}," parts" unless($conf{quiet} || @{$fn}==1);
       my @pa;
       foreach my $f (@$fn) { 
