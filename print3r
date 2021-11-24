@@ -1445,6 +1445,7 @@ sub slicePart {
             unless(defined $conf{$k}) {
                my $d = $c->{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
+               $d = ($d*1)."%" if($k eq 'fill_density');    # -- prusa & super are picky
                print $fh "$k = $d\n" unless($conf{$k});
             }
          }
@@ -1453,6 +1454,7 @@ sub slicePart {
             unless($internOption{$k}) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
+               $d = ($d*1)."%" if($k eq 'fill_density');    # -- prusa & super are picky
                print $fh "$k = $d\n";
             }
          }
