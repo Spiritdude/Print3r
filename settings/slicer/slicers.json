@@ -62,6 +62,15 @@
          "stl" : 1
       }
    },
+   "super": {
+      "exe": "superslicer",
+      "formats": {
+         "obj" : 1,
+         "3mf" : 1,
+         "amf" : 1,
+         "stl" : 1
+      }
+   },
    "mandoline" : {
       "exe" : "mandoline",
       "formats" : {

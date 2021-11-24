@@ -1380,7 +1380,7 @@ sub slicePart {
       push(@rm,@fx);
    }
 
-   if((!$conf{stick_position}) && !($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa') && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
+   if((!$conf{stick_position}) && !($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}eq'super') && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
       print ", arrange ",scalar @{$fn}," parts" unless($conf{quiet} || @{$fn}==1);
       my @pa;
       foreach my $f (@$fn) { 
@@ -1394,7 +1394,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}=~/rtn/||$conf{slicer}=~/(mandoline|zplus)/||$conf{slicer}eq'5dmaker')) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}eq'super'||$conf{slicer}=~/rtn/||$conf{slicer}=~/(mandoline|zplus)/||$conf{slicer}eq'5dmaker')) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1429,7 +1429,7 @@ sub slicePart {
    
    print "$me: settings for slicing:\n".toJSON(\%conf)."\n" if($conf{verbose});
    
-   if($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa') {                         # -- slic3r & slic3r-pe
+   if($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}eq'super') {      # -- slic3r, slic3r-pe, prusa, superslicer
       # -- compose argument list for slic3r
       if(1) {
          # -- note: slic3r and slic3r-pe won't support all settings coming from command line
@@ -1457,7 +1457,7 @@ sub slicePart {
             }
          }
          close $fh;
-         push(@a,'--export-gcode') if($conf{slicer}eq'prusa');
+         push(@a,'--export-gcode') if($conf{slicer}eq'prusa'||$conf{slicer}eq'super');
          push(@a,'--load',$tmp);
          push(@rm,$tmp);
          #push(@a,'--gcode-comments');
@@ -1474,10 +1474,10 @@ sub slicePart {
          my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
          # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
          #          in case there are multiple parts, we don't know how slic3r combines them ...
-         push(@a,$conf{slicer}eq'prusa'?'--center':'--print-center',join(",",@pos));
+         push(@a,$conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--print-center',join(",",@pos));
          print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
       } elsif($conf{auto_center}) {
-         push(@a,$conf{slicer}eq'prusa'?'--center':'--print-center',($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
+         push(@a,$conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--print-center',($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
       }
       if(0) {
          foreach my $k (sort keys %conf) {      # -- likely not needed, since we rewrote temporary config with all setttings
@@ -1572,10 +1572,10 @@ sub slicePart {
          my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
          # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
          #          in case there are multiple parts, we don't know how slic3r combines them ...
-         push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".join(",",@pos));
+         push(@a,($conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--bed-center')."=".join(",",@pos));
          print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
       } elsif($conf{auto_center}) {
-         push(@a,($conf{slicer}eq'prusa'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
+         push(@a,($conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
       }
       foreach my $k (sort keys %conf) {      # -- pass slicer4rtn native args by command line
          my $k0 = $k;
@@ -1841,7 +1841,7 @@ sub slicePart {
 
    if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura or slic3r*
       $process->{filament_used} = $2 * ($3 eq 'm' ? 1000:1);               # -- filament_used [mm] always
-   } elsif($out=~/filament used\s\[mm\]\s=\s([\d\.]+)/i) {      # -- prusa
+   } elsif($out=~/filament used\s\[mm\]\s=\s([\d\.]+)/i) {      # -- prusa or superslicer
       $process->{filament_used} = $1;
    } elsif($out=~/Filament:\s*([\d\.]+)/i) {       # -- cura-legacy
       $process->{filament_used} = $1;
