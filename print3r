@@ -62,7 +62,7 @@ use Cwd;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.12';
+my $VERSION = '0.3.13';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -150,8 +150,8 @@ foreach (@ARGV) {                # -- parse command-line arguments
 delete $conf{auto_center} if($conf{random_placement});                                # -- resolve contradictions
 delete $conf{random_placement}, delete $conf{auto_center} if($conf{translate});       # --    "            "
 delete $conf{random_placement}, delete $conf{auto_center} if($conf{placement});
-$conf{auto_center} = "\0" if($conf{placement}eq'center');
-$conf{random_placement} = "\0" if($conf{placement}eq'random');
+$conf{auto_center} = "\1" if($conf{placement}eq'center');
+$conf{random_placement} = "\1" if($conf{placement}eq'random');
 
 $conf{printer} = 'default' if(!$conf{printer}); # -- no printer defined, let's get 'default.ini' if available (should be)
 
@@ -2057,6 +2057,8 @@ sub printGcode {
    open(my $fh,"<",$fn);
    return if(!$fh);
    
+   webcam_snap() if($conf{webcam});
+
    if($conf{layer_gcode} && $conf{slicer}=~/slic3r/) {   # -- we need to find total count of layers
       my @s = stat($fn);
       my $p = $s[7] * 0.9;
@@ -2162,6 +2164,8 @@ sub printGcode {
       $eta = (($st + $eta) - time()) / 60;          # -- relative
       my $now = (time()-$st)/60;
 
+      webcam_snap() if($conf{webcam});
+   
       if($cur_e && $st_e && $process->{filament_used}) {      # -- estimated arrival/end based on extrusion (without heating up), more precise but depends on "filament_used" data
          $eta = (time()-$st_e) / $cur_e * $process->{filament_used};
          $eta = (($st_e + $eta) - time()) / 60;
@@ -2298,8 +2302,14 @@ sub printGcode {
    printerSend($com,"M117 completed: " . sprintf("%dh %02dm",int($tot/60),$tot%60) . "\n") if($conf{display_update}ne'off');
    printerResponse($com);
    
-   sleep 3;
+   webcam_snap(1) if($conf{webcam});      # -- force
    
+   sleep 3;    # -- give it time
+
+   if($conf{webcam}) {     # -- check if there were any recordings
+      my $dir = "$ENV{HOME}/.print3r/snaps/";
+      delete $process->{webcam} if(!-e "$dir/$process->{webcam}->{snaps}[0]");
+   }
    print "\n" if(!$conf{quiet});
 
    # -- log printjob
@@ -2403,6 +2413,61 @@ sub printerResponse {
    }
    
    return $resp;
+}
+
+sub webcam_snap {
+   my($force) = @_;
+
+   if($conf{webcam}) {
+      my $w;
+      $w->{t} = 60;
+      $w->{wait} = 2;
+      foreach my $kv (split(/[;,]/,$conf{webcam_snap})) {
+         my($k,$v) = split(/:/,$kv);
+         $w->{$k} = $v; 
+      }
+      if($force || ($process->{webcam}->{last} + $w->{t} < time())) {
+         my $dir = "$ENV{HOME}/.print3r/snaps";
+         mkdir $dir unless(-e $dir);
+         my @t = localtime();
+         my $fn = sprintf("%04d-%02d-%02d-%02d-%02d-%02d - ",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0]);
+         my $nick = $conf{machine_name} || $$;
+
+         $nick =~ s/[\W ]+/_/g;
+         $fn .= $nick;
+         $fn .= ".jpg";
+
+         print "$me: take webcam snap $conf{webcam} ($conf{webcam_snap})\n" if($conf{verbose}>0);
+         $SIG{CHLD} = 'IGNORE';
+         if(fork()==0) {
+            if(fork()==0) {
+               if(fork()==0) {
+                  close STDOUT;   # -- ffmpeg is chatty
+                  close STDERR;
+                  exec("ffmpeg","-i",$conf{webcam},"-ss",$w->{wait},"-r",1,"-vsync",1,"-qscale",1,"-frames:v",1,"-f","image2","$dir/$fn");
+               }
+               wait;
+               if($conf{webcam_rotate}) {
+                  my $nn = $$;
+                  if(fork()==0) {
+                     #exec("jpegtran","-rotate",$conf{webcam_rotate},"-outfile","$dir/$fn","$dir/$fn");  # -- gives artefacts with my webcams (bottom 16px row is not rotated), avoid it
+                     exec("convert","$dir/$fn","-rotate",$conf{webcam_rotate},"$dir/tmp-$nn.jpg");    # -- not optimal, but works
+                  }
+                  wait;
+                  rename("$dir/tmp-$nn.jpg","$dir/$fn");
+               }
+               print "$me: webcam snap saved\n" if($conf{verbose}>0);
+               exit;
+            }
+            wait;
+            exit;
+         }
+         # -- no wait, let the child take its time
+         print "$me: webcam done.\n" if($conf{verbose}>0);
+         push(@{$process->{webcam}->{snaps}},$fn);
+         $process->{webcam}->{last} = time();
+      }
+   }
 }
 
 # ---------------------------------------------------------------------------------------------------------------
