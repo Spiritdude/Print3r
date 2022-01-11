@@ -24,6 +24,11 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+2021:
+- 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
+- 0.3.13: supporting webcams via webcam=<url>[ <url2>...] and webcam_snap=<settings>[ <setting2>...]
+- 0.3.12: more printer info in log-file, firmware and M501 output
+- 0.3.11: experimental support for zplus-slicer (--slicer=zplus)
 - 0.3.10: each successful(ended) logged print contains new or `--uid=...` uid (to track printed parts)
 - 0.3.9: 'log' lists all finished prints, incl. search with term or reference (see help)
 - 0.3.6: support for `--post=<post1>[,<post2>...]` and `--post_<post1>=proc %i -o %o`
@@ -31,12 +36,16 @@ print3r preview cube.gcode
 - 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
 - 0.3.3: experimental support for `--slicer=mandoline` added
 - 0.3.2: experimental support for `--slicer=slicer4rtn` added
+
+2019:
 - 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
 - 0.2.8: CuraEngine-4.2.0 support via `--slicer=cura4`, see wiki for install instructions
 - 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support `--toolmap` & `--toolremap`
 - 0.2.5: preliminary `--slicer=prusa` support, additional inline functions support for gcode transformation: `&toolcolor(n,a,b,c,d,e)`, `&hsl2cmy(h,s,l)`, `&phases(n=2|3,p=3|4)`
 - 0.2.3: support for `--prepend_gcode=...` for start-gcode addition, and `--layer-gcode=...`
 - 0.2.2: support for `skirts`, `brims` and `rafts`, `support` and `seam` slicer-independent
+
+2018:
 - 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
 - 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
 - 0.1.7: more slicer-independent speed settings (`print/travel/infill/perimeter/small_perimeter/bridge/retract_speed`)
