@@ -96,7 +96,7 @@ my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slice
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
    'auto_center'=>1,'random_placement'=>1,'placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
    'timeout'=>1,'scad'=>1,'scadlib'=>1,'scadimport'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
-   'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1);
+   'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1, 'webcam'=>1, 'webcam_settings'=>1, 'webcam_snap'=>1);
 
 # -- all formats we support for slicers (scad, sccad aside)
 my %formats = ( "stl"=>1, "amf"=>1, "obj"=>1, "3mf"=>1, "3mj"=>1, "off"=>1, "5mf"=>1 );
