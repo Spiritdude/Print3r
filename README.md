@@ -25,10 +25,10 @@ print3r preview cube.gcode
 
 ## Changelog
 2021:
-- 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
-- 0.3.13: supporting webcams via webcam=<url>[ <url2>...] and webcam_snap=<settings>[ <setting2>...]
-- 0.3.12: more printer info in log-file, firmware and M501 output
-- 0.3.11: experimental support for zplus-slicer (--slicer=zplus)
+- 0.3.14: experimental support for `lab-slicer` and `vox3l-slicer` (`--slicer=lab` or `vox3l`)
+- 0.3.13: supporting webcams via `webcam=<url>[ <url2>...]` and `webcam_snap=<settings>[ <setting2>...]`
+- 0.3.12: more printer info in log-file, firmware and `M501` output
+- 0.3.11: experimental support for `zplus-slicer` (`--slicer=zplus`)
 - 0.3.10: each successful(ended) logged print contains new or `--uid=...` uid (to track printed parts)
 - 0.3.9: 'log' lists all finished prints, incl. search with term or reference (see help)
 - 0.3.6: support for `--post=<post1>[,<post2>...]` and `--post_<post1>=proc %i -o %o`
