@@ -1,0 +1,4 @@
+#!/bin/bash
+ffmpeg -i "$1" -ss 5 -r 1 -vsync 1 -qscale 1 -frames:v 1 -f image2 snap-$$.jpg
+convert snap-$$.jpg -rotate ${2:-0} images_$(date +%F_%H-%M-%S).jpg
+rm -f snap-$$.jpg

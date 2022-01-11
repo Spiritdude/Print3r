@@ -95,5 +95,23 @@
       "formats": {
          "stl": 1
       }
+   },
+   "lab": {
+      "exe": "lab-slicer",
+      "formats": {
+         "stl": 1,
+         "obj": 1,
+         "3mj": 1,
+         "3mf": 1
+      }
+   },
+   "vox3l": {
+      "exe": "vox3l-slicer",
+      "formats": {
+         "stl": 1,
+         "obj": 1,
+         "3mj": 1,
+         "3mf": 1
+      }
    }
 }

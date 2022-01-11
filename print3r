@@ -11,6 +11,8 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2021/12/16: 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
+# 2021/12/05: 0.3.13: supporting webcams via webcam=<url>[ <url2>...] and webcam_snap=<settings>[ <setting2>...]
 # 2021/11/09: 0.3.12: more printer info in log-file, firmware and M501 output
 # 2021/10/23: 0.3.11: experimental support for zplus-slicer (--slicer=zplus)
 # 2021/10/14: 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
@@ -59,10 +61,11 @@ use File::Which;
 use IO::Socket::INET;
 use IO::Zlib;
 use Cwd;
+use FileHandle;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.13';
+my $VERSION = '0.3.14';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -1394,7 +1397,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}eq'super'||$conf{slicer}=~/rtn/||$conf{slicer}=~/(mandoline|zplus)/||$conf{slicer}eq'5dmaker')) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/(slic3r|prusa|super|rtn|mandoline|zplus|5dmaker|lab|vox3l)/)) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1655,7 +1658,122 @@ sub slicePart {
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a);
    
-   } elsif($conf{slicer}eq'cura-slicer'||$conf{slicer}eq'5dmaker'||$conf{slicer}eq'kirimoto'||$conf{slicer}eq'zplus') {    # -- cura-slicer, 5dmaker, kirimoto
+   } elsif($conf{slicer}eq'cura-legacy') {    # -- cura-legacy
+      push(@a,"-v");    # -- verbose
+      #push(@a,'-c',"$cpath/slicer/cura-legacy/base.ini");
+      if(0) {
+         if($conf{random_placement}) {
+            my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+            $conf{'position.X'} = $pos[0];
+            $conf{'position.Y'} = $pos[1];
+            print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+         } elsif($conf{auto_center}) {
+            $conf{'position.X'} = $printer->{build}->{x}/2;
+            $conf{'position.Y'} = $printer->{build}->{y}/2;
+         }
+      }
+      if($conf{output}) {
+         push(@a,'-o',$conf{output});
+      } else {
+         push(@a,'-o',$tmp);
+         push(@rm,$tmp);
+      }
+      my $c;
+      foreach my $k (sort keys %conf) {
+         next if($internOption{$k});
+         $c->{$k} = $conf{$k};         # -- just copy
+      }
+      $c = remap($c);
+      # -- manually add setting temperatures so we don't have to in start/end_gcode to stay flexible
+      $c->{startCode} = "; $NAME $VERSION\nG90\n".$c->{startCode};
+      $c->{startCode} .= "M109 S$c->{temperature}\n" if($c->{temperature});
+      $c->{startCode} .= "M140 S$c->{bed_temperature}\n" if($c->{bed_temperature});
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+         push(@a,"-s","$k=$v");
+      }
+      if($conf{multiply_part}>1) {
+         foreach(1..$conf{multiply_part}) {
+            foreach(ref($fn)?@$fn:$fn) {
+               push(@a,$_);
+            }
+         }
+      } else {
+         if(ref($fn)eq'ARRAY') {
+            foreach(ref($fn)?@$fn:$fn) {
+               push(@a,$_);
+            }
+         } else {
+            push(@a,$fn);
+         }
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});
+
+   } elsif($conf{slicer}=~/cura/i && $conf{slicer}ne'cura-slicer') {      # -- cura & curax
+      push(@a,"slice");
+      #push(@a,"-p");    # -- progress
+      push(@a,"-v");    # -- verbose
+      #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
+      push(@a,'-j',"$cpath/slicer/$conf{slicer}/fdmprinter.def.json");
+      #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
+      #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
+      #push(@a,'-j',$conf{printer}) if($conf{printer});
+      #push(@a,"-g");
+      foreach my $n (0..($conf{extruder_count}||1)-1) {
+         #push(@a,"-e$n");        # -- doesn't work, throws error
+         push(@a,"-s","extruder_nr=$n");
+         my @ks;
+         if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+            while(<$fh>) {
+               chop; 
+               if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+                  my($k,$v) = ($1,$2);
+                  $v =~ s/\\n/\n/g;
+                  push(@a,"-s","$k=$v") unless($conf{$k});
+               }
+            }
+            close $fh;
+         } else {
+            print "$me: WARN: no base.ini found in @paths\n";
+         }
+         my $c;
+         foreach my $k (sort keys %conf) {
+            next if($internOption{$k});
+            $c->{$k} = $conf{$k};         # -- just copy
+         }
+         $c = remap($c);
+         foreach my $k (sort keys %$c) {
+            my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+            push(@a,"-s","$k=$v");
+         }
+      }
+      if(ref($fn)eq'ARRAY') {
+         my $n = 0;
+         foreach my $o (ref($fn)?@$fn:$fn) {
+            #push(@a,"-e$n");
+            #push(@a,"-s","extruder_nr=$n"); $n++;
+            push(@a,"-l",$o);
+            # push(@a,'--next');
+         }
+      } else {
+         push(@a,"-l",$fn);
+      }
+      if($conf{output}) {
+         push(@a,'-o',$conf{output});
+      } else {
+         push(@a,'-o',$tmp);
+         push(@rm,$tmp);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
+   
+   } else {
+      unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l)/) {
+         print "WARN: slicer '$conf{slicer}' not officially support, but trying to launch it\n";
+      }
       if(defined $conf{output}) {
          unlink $conf{output};
          push(@a,"-o",$conf{output});
@@ -1725,118 +1843,6 @@ sub slicePart {
       print ", slice" unless($conf{quiet});
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a);
-   
-   } elsif($conf{slicer}eq'cura-legacy') {    # -- cura-legacy
-      push(@a,"-v");    # -- verbose
-      #push(@a,'-c',"$cpath/slicer/cura-legacy/base.ini");
-      if(0) {
-         if($conf{random_placement}) {
-            my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
-            $conf{'position.X'} = $pos[0];
-            $conf{'position.Y'} = $pos[1];
-            print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
-         } elsif($conf{auto_center}) {
-            $conf{'position.X'} = $printer->{build}->{x}/2;
-            $conf{'position.Y'} = $printer->{build}->{y}/2;
-         }
-      }
-      if($conf{output}) {
-         push(@a,'-o',$conf{output});
-      } else {
-         push(@a,'-o',$tmp);
-         push(@rm,$tmp);
-      }
-      my $c;
-      foreach my $k (sort keys %conf) {
-         next if($internOption{$k});
-         $c->{$k} = $conf{$k};         # -- just copy
-      }
-      $c = remap($c);
-      # -- manually add setting temperatures so we don't have to in start/end_gcode to stay flexible
-      $c->{startCode} = "; $NAME $VERSION\nG90\n".$c->{startCode};
-      $c->{startCode} .= "M109 S$c->{temperature}\n" if($c->{temperature});
-      $c->{startCode} .= "M140 S$c->{bed_temperature}\n" if($c->{bed_temperature});
-      foreach my $k (sort keys %$c) {
-         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
-         push(@a,"-s","$k=$v");
-      }
-      if($conf{multiply_part}>1) {
-         foreach(1..$conf{multiply_part}) {
-            foreach(ref($fn)?@$fn:$fn) {
-               push(@a,$_);
-            }
-         }
-      } else {
-         if(ref($fn)eq'ARRAY') {
-            foreach(ref($fn)?@$fn:$fn) {
-               push(@a,$_);
-            }
-         } else {
-            push(@a,$fn);
-         }
-      }
-      print ", slice" unless($conf{quiet});
-      print ", exec: @a\n" if($conf{verbose});
-      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});
-
-   } else {                               # -- cura & curax
-      push(@a,"slice");
-      #push(@a,"-p");    # -- progress
-      push(@a,"-v");    # -- verbose
-      #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
-      push(@a,'-j',"$cpath/slicer/$conf{slicer}/fdmprinter.def.json");
-      #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
-      #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
-      #push(@a,'-j',$conf{printer}) if($conf{printer});
-      #push(@a,"-g");
-      foreach my $n (0..($conf{extruder_count}||1)-1) {
-         #push(@a,"-e$n");        # -- doesn't work, throws error
-         push(@a,"-s","extruder_nr=$n");
-         my @ks;
-         if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
-            while(<$fh>) {
-               chop; 
-               if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
-                  my($k,$v) = ($1,$2);
-                  $v =~ s/\\n/\n/g;
-                  push(@a,"-s","$k=$v") unless($conf{$k});
-               }
-            }
-            close $fh;
-         } else {
-            print "$me: WARN: no base.ini found in @paths\n";
-         }
-         my $c;
-         foreach my $k (sort keys %conf) {
-            next if($internOption{$k});
-            $c->{$k} = $conf{$k};         # -- just copy
-         }
-         $c = remap($c);
-         foreach my $k (sort keys %$c) {
-            my $v = $c->{$k}; $v =~ s/\\n/\n/g;
-            push(@a,"-s","$k=$v");
-         }
-      }
-      if(ref($fn)eq'ARRAY') {
-         my $n = 0;
-         foreach my $o (ref($fn)?@$fn:$fn) {
-            #push(@a,"-e$n");
-            #push(@a,"-s","extruder_nr=$n"); $n++;
-            push(@a,"-l",$o);
-            # push(@a,'--next');
-         }
-      } else {
-         push(@a,"-l",$fn);
-      }
-      if($conf{output}) {
-         push(@a,'-o',$conf{output});
-      } else {
-         push(@a,'-o',$tmp);
-         push(@rm,$tmp);
-      }
-      print ", slice" unless($conf{quiet});
-      print ", exec: @a\n" if($conf{verbose});
-      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
    }
 
    $process->{time}->{slice} = time()-$st;
@@ -2047,6 +2053,7 @@ sub layerScript {
 sub printGcode {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
+
    my $com = openSerial($conf{device});
    
    my $st = time();
@@ -2057,7 +2064,7 @@ sub printGcode {
    open(my $fh,"<",$fn);
    return if(!$fh);
    
-   webcam_snap() if($conf{webcam});
+   webcam_snap([$fh,$com]) if($conf{webcam});
 
    if($conf{layer_gcode} && $conf{slicer}=~/slic3r/) {   # -- we need to find total count of layers
       my @s = stat($fn);
@@ -2164,7 +2171,7 @@ sub printGcode {
       $eta = (($st + $eta) - time()) / 60;          # -- relative
       my $now = (time()-$st)/60;
 
-      webcam_snap() if($conf{webcam});
+      webcam_snap([$fh,$com]) if($conf{webcam});
    
       if($cur_e && $st_e && $process->{filament_used}) {      # -- estimated arrival/end based on extrusion (without heating up), more precise but depends on "filament_used" data
          $eta = (time()-$st_e) / $cur_e * $process->{filament_used};
@@ -2302,13 +2309,37 @@ sub printGcode {
    printerSend($com,"M117 completed: " . sprintf("%dh %02dm",int($tot/60),$tot%60) . "\n") if($conf{display_update}ne'off');
    printerResponse($com);
    
-   webcam_snap(1) if($conf{webcam});      # -- force
-   
-   sleep 3;    # -- give it time
+   if($conf{webcam}) {
+      webcam_snap([$com],1);      # -- force
+      my $w = webcam_snapconf();
 
-   if($conf{webcam}) {     # -- check if there were any recordings
-      my $dir = "$ENV{HOME}/.print3r/snaps/";
-      delete $process->{webcam} if(!-e "$dir/$process->{webcam}->{snaps}[0]");
+      sleep(3+$w->{delay});       # -- make sure last webcam snap is done
+
+      my $dir = "$ENV{HOME}/.print3r/snaps/";   # -- review all snaps
+      my(@se,@sm);
+      foreach my $fn (@{$process->{webcam}->{snaps}}) {
+         if(-e "$dir/$fn") {
+            push(@se,$fn);
+         } else {
+            push(@sm,$fn);
+         }
+      }
+      if(@se==0) {
+         delete $process->{webcam};
+         print "\n" unless($conf{verbose});
+         print "$me: WARN: webcam(s) failed to capture any images";
+      } else {
+         my $tot = @{$process->{webcam}->{snaps}};
+         $process->{webcam}->{snaps} = \@se;    # -- list only existing images
+         delete $process->{webcam}->{last};
+         if(@sm>0) {
+            print "\n" unless($conf{verbose});
+            my $p = 100 / $tot * @sm;
+            printf("$me: WARN: webcam(s) missed to capture some images (%d out of %d, %d%%)",scalar @sm,$tot,$p);
+         }
+      }
+   } else {
+      sleep 3;                    # -- give it time
    }
    print "\n" if(!$conf{quiet});
 
@@ -2415,56 +2446,112 @@ sub printerResponse {
    return $resp;
 }
 
+sub webcam_conf {
+   my($c) = @_;
+   my $w;
+
+   foreach my $kv (split(/[;,]/,$c)) {
+      my($k,$v) = split(/:/,$kv);
+      $w->{$k} = $v; 
+   }
+   return $w;
+}
+
+sub webcam_snapconf {
+   my $w = webcam_conf($conf{webcam_snap});
+
+   $w->{time} = 60 unless(defined $w->{time});
+   $w->{delay} = 5 unless(defined $w->{delay});
+   $w->{time} = $w->{delay}+1 if($w->{time}<$w->{delay});   # -- sanity check
+
+   return $w;
+}
+
 sub webcam_snap {
-   my($force) = @_;
+   my($fh,$force) = @_;
 
    if($conf{webcam}) {
-      my $w;
-      $w->{t} = 60;
-      $w->{wait} = 2;
-      foreach my $kv (split(/[;,]/,$conf{webcam_snap})) {
-         my($k,$v) = split(/:/,$kv);
-         $w->{$k} = $v; 
-      }
-      if($force || ($process->{webcam}->{last} + $w->{t} < time())) {
+      my $w = webcam_snapconf();
+
+      if($force || ($process->{webcam}->{last} + $w->{time} < time())) {
          my $dir = "$ENV{HOME}/.print3r/snaps";
          mkdir $dir unless(-e $dir);
-         my @t = localtime();
-         my $fn = sprintf("%04d-%02d-%02d-%02d-%02d-%02d - ",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0]);
-         my $nick = $conf{machine_name} || $$;
+         
+         $conf{webcam} =~ s/^\s+$//;
+         $conf{webcam} =~ s/\s+$//;
+         
+         my @wcs = split(/\s+/,$conf{webcam});     # -- support multiple webcams
+         my $wcn = 0;
 
-         $nick =~ s/[\W ]+/_/g;
-         $fn .= $nick;
-         $fn .= ".jpg";
+         foreach my $wc (@wcs) {
+            next if(!$wc);
 
-         print "$me: take webcam snap $conf{webcam} ($conf{webcam_snap})\n" if($conf{verbose}>0);
-         $SIG{CHLD} = 'IGNORE';
-         if(fork()==0) {
+            my @t = localtime();
+            my $fn = sprintf("%04d%02d%02d %02d%02d%02d - ",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0]);
+            my $nick = $conf{machine_name} || $$;
+   
+            $nick =~ s/[\W ]+/_/g;
+            $fn .= $nick;
+            $fn .= ".$wcn" if(@wcs>1);
+            $fn .= ".jpg";
+   
+            print "$me: take webcam snap #$wcn ($wc, ".toJSON($w,{pretty=>0}).")\n" if($conf{verbose}>0);
+
+            local $SIG{CHLD} = 'IGNORE';
+            my $pid = $$;
             if(fork()==0) {
-               if(fork()==0) {
-                  close STDOUT;   # -- ffmpeg is chatty
-                  close STDERR;
-                  exec("ffmpeg","-i",$conf{webcam},"-ss",$w->{wait},"-r",1,"-vsync",1,"-qscale",1,"-frames:v",1,"-f","image2","$dir/$fn");
+               # -- perl & fork: a pain to deal with (it matters): close all open handles ($com,$fh)
+               #                 otherwise it screws up $fh and/or $com and stalls print
+               # -- this is a hack, but it seems nothing else works (e.g. below with $fd->close won't do it)
+               if(1) {
+                  foreach my $fd (0..10) {
+                     POSIX::close($fd);
+                  }
                }
-               wait;
-               if($conf{webcam_rotate}) {
-                  my $nn = $$;
+               #foreach my $fd (@$fh) {
+               #   $fd->close;
+               #   #close $fd;
+               #}
+               #close STDIN;
+               #close STDOUT;     # -- needs to be closed, otherwise interferes with $com/$fh higher up (no output about webcam not providing snaps)
+               #close STDERR;        
+   
+               if(fork()==0) {
                   if(fork()==0) {
-                     #exec("jpegtran","-rotate",$conf{webcam_rotate},"-outfile","$dir/$fn","$dir/$fn");  # -- gives artefacts with my webcams (bottom 16px row is not rotated), avoid it
-                     exec("convert","$dir/$fn","-rotate",$conf{webcam_rotate},"$dir/tmp-$nn.jpg");    # -- not optimal, but works
+                     close STDOUT;   # -- ffmpeg is chatty
+                     close STDERR;
+                     exec("ffmpeg","-i",$wc,"-ss",$w->{delay},"-r",1,"-vsync",1,"-qscale",1,"-frames:v",1,"-f","image2","$dir/$fn");
+                     exit;
                   }
                   wait;
-                  rename("$dir/tmp-$nn.jpg","$dir/$fn");
+                  print "$me: WARN: webcam #$wcn did not capture an image ($wc, ".toJSON($w,{pretty=>0}).")\n" unless(-e "$dir/$fn");
+                  my $ws = webcam_conf($conf{webcam_settings});
+                  if(@wcs>1 && $conf{webcam_settings} =~ /\S+ \S+/) {         # -- multiple webcams-settings?
+                     my @s = split(/\s+/,$conf{webcam_settings});
+                     $ws = webcam_conf($s[$wcn]);
+                  }
+                  if(-e "$dir/$fn" && $ws->{rotate}!=0) {
+                     my $nn = $$.".$wcn";
+                     if(fork()==0) {
+                        #exec("jpegtran","-rotate",$ws->{rotate},"-outfile","$dir/$fn","$dir/$fn");  # -- gives artefacts with my webcams (bottom 16px row is not rotated), avoid it
+                        exec("convert","$dir/$fn","-rotate",$ws->{rotate},"$dir/tmp-$nn.jpg");    # -- not optimal, but works
+                        exit;
+                     }
+                     wait;
+                     rename("$dir/tmp-$nn.jpg","$dir/$fn");
+                     exit;
+                  }
+                  print "$me: webcam #$wcn snap saved\n" if($conf{verbose}>0);
+                  exit;
                }
-               print "$me: webcam snap saved\n" if($conf{verbose}>0);
+               wait;
                exit;
             }
-            wait;
-            exit;
+            # -- no wait (continue printing), let the child take its time
+            print "$me: webcam #$wcn done.\n" if($conf{verbose}>0);
+            push(@{$process->{webcam}->{snaps}},$fn);
+            $wcn++;
          }
-         # -- no wait, let the child take its time
-         print "$me: webcam done.\n" if($conf{verbose}>0);
-         push(@{$process->{webcam}->{snaps}},$fn);
          $process->{webcam}->{last} = time();
       }
    }
