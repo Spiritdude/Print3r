@@ -25,7 +25,7 @@ print3r preview cube.gcode
 
 ## Changelog
 2022:
-- 0.3.15: experimental support for voxgl-slicer (--slicer=voxgl)
+- 0.3.15: experimental support for voxgl-slicer (`--slicer=voxgl`)
 
 2021:
 - 0.3.14: experimental support for `lab-slicer` and `vox3l-slicer` (`--slicer=lab` or `vox3l`)
