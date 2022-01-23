@@ -24,6 +24,9 @@ print3r preview cube.gcode
 \*) `.stl` (ascii & binary), and preliminary `.amf` and `.obj` supported as well.
 
 ## Changelog
+2022:
+- 0.3.15: experimental support for voxgl-slicer (--slicer=voxgl)
+
 2021:
 - 0.3.14: experimental support for `lab-slicer` and `vox3l-slicer` (`--slicer=lab` or `vox3l`)
 - 0.3.13: supporting webcams via `webcam=<url>[ <url2>...]` and `webcam_snap=<settings>[ <setting2>...]`
