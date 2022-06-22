@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2022/04/27: 0.3.16: --scad with --scad.<var>=<val> to pass variables to OpenSCAD models, experimental support for metatron- and enoch-slicer
 # 2022/01/17: 0.3.15: experimental support for voxgl-slicer (--slicer=voxgl)
 # 2021/12/16: 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
 # 2021/12/05: 0.3.13: supporting webcams via webcam=<url>[ <url2>...] and webcam_snap=<settings>[ <setting2>...]
@@ -66,7 +67,7 @@ use FileHandle;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.15';
+my $VERSION = '0.3.16';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -283,7 +284,7 @@ if($conf{printer}) {
 # -- evaluate macros (e.g. "@thin")
 my @a;
 foreach(@f) {
-   if(/^@([\w\-\/]+)/) {         # -- evaluate macros
+   if(/^@([\w\-\+\/]+)/) {         # -- evaluate macros
       my $m = $1;
       my $done;
       foreach my $d (@paths) {
@@ -704,7 +705,9 @@ if($cmd eq 'analyze') {          # -- not yet
       $me --printer=corexy --device=/dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
       $me --printer=ender3 --device=tcp:192.168.0.2 --layer-height=0.25 print cube.stl
       $me print cube.scad
+      $me print parametric.scad --scad.A=20 --scad.B=30
       $me --scad print \"cube(20)\"
+      $me --scad print \"cube(a)\" --scad.a=20
       $me log
       $me --output=uid,layer_height log cube
       $me log -v '#12'
@@ -722,6 +725,13 @@ if($cmd eq 'analyze') {          # -- not yet
 cleanup();
 
 # ---------------------------------------------------------------------------------------------------------------
+
+sub internOption {
+   my($k) = @_;
+   return 1 if($internOption{$k});
+   return 1 if($k=~/^--scad\./);
+   return 0;
+}
 
 sub error {
    print STDERR "\n$me: ERROR: $_[0]\n";
@@ -778,7 +788,11 @@ sub scadToSTL {
    if(fork()==0) {
       $conf{output} = $fn, $conf{output} =~ s/.\w+$/.stl/ unless($conf{output});
       unlink $conf{output};
-      my(@a) = ('openscad','-o',$conf{output},$fn);
+      my(@a) = ('openscad');
+      foreach my $k (sort keys %conf) {
+         push(@a,"-D","$1=$conf{$k}") if($k =~ /^scad\.(\w+)/);
+      }
+      push(@a,'-o',$conf{output},$fn);
       unless($conf{verbose}) {
          close STDOUT;
          close STDERR;
@@ -1398,7 +1412,7 @@ sub slicePart {
    }
    
    # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
-   if((!($conf{slicer}=~/(slic3r|prusa|super|rtn|mandoline|zplus|5dmaker|lab|vox3l)/)) && ($conf{auto_center}||$conf{random_placement})) {
+   if((!($conf{slicer}=~/(slic3r|prusa|super|rtn|mandoline|zplus|5dmaker|lab|vox3l|voxgl)/)) && ($conf{auto_center}||$conf{random_placement})) {
       my $n = 0;
       my @fx;
       foreach my $f (ref($fn)?@$fn:$fn) {
@@ -1455,7 +1469,7 @@ sub slicePart {
          }
          
          foreach my $k (sort keys %conf) {      # -- command line arguments & macros
-            unless($internOption{$k}) {
+            unless(internOption($k)) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
                $d = ($d*1)."%" if($k eq 'fill_density');    # -- prusa & super are picky
@@ -1487,7 +1501,7 @@ sub slicePart {
       }
       if(0) {
          foreach my $k (sort keys %conf) {      # -- likely not needed, since we rewrote temporary config with all setttings
-            next if($internOption{$k});
+            next if(internOption($k));
             if($conf{$k} eq '\1') {
                push(@a,"--$k");
             } else {
@@ -1556,7 +1570,7 @@ sub slicePart {
          }
          
          foreach my $k (sort keys %conf) {      # -- command line arguments & macros
-            unless($internOption{$k}) {
+            unless(internOption($k)) {
                my $d = $conf{$k}; $d =~ s/\n/\\n/g;
                $d = 1 if($d eq "\\1");
                print $fh "$k = $d\n" unless(defined $iconf{$k} || $k =~ /^slicer4rtn\./);
@@ -1629,7 +1643,7 @@ sub slicePart {
       }
       my $c;
       foreach my $k (sort keys %conf) {
-         next if($internOption{$k});
+         next if(internOption($k));
          $c->{$k} = $conf{$k};         # -- just copy
       }
       $c = remap($c);
@@ -1681,7 +1695,7 @@ sub slicePart {
       }
       my $c;
       foreach my $k (sort keys %conf) {
-         next if($internOption{$k});
+         next if(internOption($k));
          $c->{$k} = $conf{$k};         # -- just copy
       }
       $c = remap($c);
@@ -1741,7 +1755,7 @@ sub slicePart {
          }
          my $c;
          foreach my $k (sort keys %conf) {
-            next if($internOption{$k});
+            next if(internOption($k));
             $c->{$k} = $conf{$k};         # -- just copy
          }
          $c = remap($c);
@@ -1772,7 +1786,7 @@ sub slicePart {
       ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
    
    } else {
-      unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l|voxgl)/) {
+      unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l|voxgl|enoch)/) {
          print "WARN: slicer '$conf{slicer}' not officially supported, but trying to launch it\n";
       }
       if(defined $conf{output}) {
@@ -1789,7 +1803,7 @@ sub slicePart {
             if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
                my($k,$v) = ($1,$2);
                #$v =~ s/\\n/\n/g;
-               push(@a,"--$k=$v") unless($conf{$k});
+               push(@a,"--$k=$v") unless(defined $conf{$k});
             }
          }
          close $fh;
@@ -1808,7 +1822,7 @@ sub slicePart {
       }
       my $c;
       foreach my $k (sort keys %conf) {
-         next if($internOption{$k});
+         next if(internOption($k));
          my $v = $conf{$k};
          $v =~ s/\n/\\n/g;
          $v = 1 if($v eq '\1');

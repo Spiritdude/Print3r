@@ -123,5 +123,23 @@
          "3mf": 1
       },
       "stdout": 1
+   },
+   "metatron": {
+      "exe": "metatron-slicer",
+      "formats": {
+         "stl": 1,
+         "off": 1,
+         "3mj": 1,
+         "3mf": 1
+      }
+   },
+   "enoch": {
+      "exe": "enoch-slicer",
+      "formats": {
+         "stl": 1,
+         "off": 1,
+         "3mj": 1,
+         "3mf": 1
+      }
    }
 }
