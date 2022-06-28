@@ -141,5 +141,11 @@
          "3mj": 1,
          "3mf": 1
       }
+   },
+   "goslice": {
+      "exe": "goslice",
+      "formats": {
+         "stl": 1
+      }
    }
 }

@@ -1786,7 +1786,7 @@ sub slicePart {
       ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
    
    } else {
-      unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l|voxgl|enoch)/) {
+      unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l|voxgl|enoch|goslice)/) {
          print "WARN: slicer '$conf{slicer}' not officially supported, but trying to launch it\n";
       }
       if(defined $conf{output}) {
@@ -1796,13 +1796,15 @@ sub slicePart {
          push(@a,"-o",$tmp);
          push(@rm,$tmp);
       }
+      # -- Note: in general all variables are using _ as spacer, if the slicer reqiures '-' again, make it so (like for `goslice`)
       if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
          while(<$fh>) {
             chop; 
             next if(/^\s*#/);
-            if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+            if(/([\w\-]+)="([^"]*)"/||/([\w\-]+)=(\S.*)/) {
                my($k,$v) = ($1,$2);
                #$v =~ s/\\n/\n/g;
+               $k =~ s/_/-/g if($conf{slicer}eq'goslice');
                push(@a,"--$k=$v") unless(defined $conf{$k});
             }
          }
@@ -1810,6 +1812,19 @@ sub slicePart {
       } else {
          print "$me: WARN: no base.ini found in @paths\n";
       }
+
+      my %strict;
+      if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/strict.ini")) {    # -- has it strict behaviour? only certain settings otherwise fails?
+         while(<$fh>) {
+            chop; 
+            next if(/^\s*#/);
+            if(/^([\w\-]+)/) {
+               $strict{$1}++;
+            }
+         }
+         close $fh;
+      }
+
       foreach my $k (sort keys %conf) {      # -- pass <slicer>.* native args by command line
          my $k0 = $k;
          if($k =~ s/^$conf{slicer}\.//) {
@@ -1817,6 +1832,8 @@ sub slicePart {
             $k_ =~ s/_/-/g;
             my $v = $conf{$k0};
             $v =~ s/\n/\\n/g;
+            next if(%strict && !defined $strict{$k_});
+            #$k_ =~ s/_/-/g if($conf{slicer}eq'goslice'); # -- done already above
             push(@a,"--$k_=$v") 
          }
       }
@@ -1824,15 +1841,18 @@ sub slicePart {
       foreach my $k (sort keys %conf) {
          next if(internOption($k));
          my $v = $conf{$k};
-         $v =~ s/\n/\\n/g;
+         $v =~ s/\n/\\n/g unless($conf{slicer}eq'goslice');
          $v = 1 if($v eq '\1');
+         next if(%strict && !defined $strict{$k});
          $c->{$k} = $v;         # -- just copy
       }
       $c = remap($c);
       foreach my $k (sort keys %$c) {
          my $v = $c->{$k}; 
-         $v =~ s/\n/\\n/g;
+         $v =~ s/\n/\\n/g unless($conf{slicer}eq'goslice');
          $v = 1 if($v eq '\1');
+         next if(%strict && !defined $strict{$k});
+         $k =~ s/_/-/g if($conf{slicer}eq'goslice');
          push(@a,"--$k=$v");
       }
       if($conf{random_placement}) {
@@ -1841,14 +1861,17 @@ sub slicePart {
          #          in case there are multiple parts, we don't know how slic3r combines them ...
          if($conf{slicer}eq'kirimoto') {
             push(@a,"--bedOrigin=$pos[0],$pos[1]","--outputOriginCenter=true");
+         } elsif($conf{slicer}eq'goslice') {
+            push(@a,"--center=".($pos[0]*1000)."_".($pos[1]*1000)."_0");
          } else {
             push(@a,"--bed_center=$pos[0],$pos[1]");
          }
          print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
-      } elsif($conf{auto_center}) {
+      } elsif($conf{auto_center} && $conf{slicer}ne'goslice') {
          push(@a,'--bed_center='.($printer->{build}->{x}/2).','.($printer->{build}->{y}/2));
       }
       foreach(1..$conf{verbose}) {
+         next if($conf{slicer}eq'goslice');
          push(@a,"-v");
       }
       if(ref($fn)eq'ARRAY') {
