@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2022/08/03: 0.3.17: adding locks for avoiding to print simulatenously to the same printer
 # 2022/04/27: 0.3.16: --scad with --scad.<var>=<val> to pass variables to OpenSCAD models, experimental support for metatron- and enoch-slicer
 # 2022/01/17: 0.3.15: experimental support for voxgl-slicer (--slicer=voxgl)
 # 2021/12/16: 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
@@ -67,7 +68,7 @@ use FileHandle;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.16';
+my $VERSION = '0.3.17';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -347,6 +348,7 @@ $SIG{INT} = sub {
 if($conf{prepend_gcode}) {
    $conf{start_gcode} .= "\n";
    foreach my $l (split(/(\\n|;)/,$conf{prepend_gcode})) {
+      $l =~ s/\$(\w+)/$conf{$1}/g;
       $conf{start_gcode} .= $l."\n";
    }
 }     
@@ -1827,7 +1829,9 @@ sub slicePart {
 
       foreach my $k (sort keys %conf) {      # -- pass <slicer>.* native args by command line
          my $k0 = $k;
-         if($k =~ s/^$conf{slicer}\.//) {
+         my $sl = $conf{slicer}; 
+         $sl =~ s/-/_/g;
+         if($k =~ s/^$sl\.//) {
             my $k_ = $k;
             $k_ =~ s/_/-/g;
             my $v = $conf{$k0};
@@ -2094,7 +2098,23 @@ sub printGcode {
    my($fn) = shift;
    my(%conf) = %{@_[0]};
 
+   my $lock = $conf{device};
+   $lock =~ s/\W/_/g;
+   $lock = "/var/lock/print3r-$lock";
+
+   if(-e $lock && (stat($lock))[9] > time()-3*60) {
+      print "ERROR: printer at $conf{device} is busy (locked with $lock), abort.\n";
+      #print " HINT: if you are absolutely sure no print job is going on, you can remove the lock $lock or\n";
+      #print "       wait max 3mins so the lock is no longer considered\n";
+      cleanup();
+      exit -1;
+   }
    my $com = openSerial($conf{device});
+
+   my $tlock = time();                            # -- time of lock
+   open(my $lfh,">$lock");
+   print $lfh time();
+   close($lfh);
    
    my $st = time();
    my $st_e; 
@@ -2150,6 +2170,7 @@ sub printGcode {
             last if($resp eq 'abort');
          }
       }
+      unlink $lock;
       cleanup();
       exit -1;
    };
@@ -2342,6 +2363,13 @@ sub printGcode {
          #printerResponse($com);
          $lst = time();
       }
+      
+      if($tlock < time()-20) {         # -- update lock every 20s
+         open(my $lfh,">$lock");
+         print $lfh time();
+         close $lfh;
+         $tlock = time();
+      }
    }
    close $fh;
    
@@ -2382,7 +2410,9 @@ sub printGcode {
       sleep 3;                    # -- give it time
    }
    print "\n" if(!$conf{quiet});
-
+   
+   unlink $lock;
+   
    # -- log printjob
    $process->{time}->{print} = time()-$st;
    mkdir $ENV{HOME}."/.print3r" unless(-e $ENV{HOME}."/.print3r");
@@ -3957,11 +3987,12 @@ sub logReference {
       if($no == $n) {
          my $d = eval { from_json($_); };
          #print to_json($d,{pretty=>1,canonical=>1});
-         %conf = %{$d->{settings}};
-         #%conf = ();
-         #foreach my $k (keys %{$d->{settings}}) {
-         #   $conf{$k} = $d->{settings}->{$k};
-         #}
+         #%conf = %{$d->{settings}};
+         foreach my $k (keys %{$d->{settings}}) {
+            next if $k eq 'device';
+            next if $k eq 'uuid';
+            $conf{$k} = $d->{settings}->{$k};
+         }
          @f = ();
          push(@f,@{$d->{file_list}});
          last;
