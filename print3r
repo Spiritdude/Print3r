@@ -11,7 +11,8 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
-# 2022/08/03: 0.3.17: adding locks for avoiding to print simulatenously to the same printer
+# 2022/10/17: 0.3.18: support CuraEngine-5.x / cura5 better
+# 2022/08/03: 0.3.17: adding locks for avoiding to print simulatenously to the same printer, better support for cura-slicer & CuraEngine 5.x
 # 2022/04/27: 0.3.16: --scad with --scad.<var>=<val> to pass variables to OpenSCAD models, experimental support for metatron- and enoch-slicer
 # 2022/01/17: 0.3.15: experimental support for voxgl-slicer (--slicer=voxgl)
 # 2021/12/16: 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
@@ -68,7 +69,7 @@ use FileHandle;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.17';
+my $VERSION = '0.3.18';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -1728,10 +1729,10 @@ sub slicePart {
       print ", exec: @a\n" if($conf{verbose});
       ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});
 
-   } elsif($conf{slicer}=~/cura/i && $conf{slicer}ne'cura-slicer') {      # -- cura & curax
+   } elsif($conf{slicer}=~/cura/i && $conf{slicer}ne'cura-slicer') {      # -- cura, cura4, cura5 & curax
       push(@a,"slice");
       #push(@a,"-p");    # -- progress
-      push(@a,"-v");    # -- verbose
+      push(@a,"-v") if $conf{slicer} ne 'cura5';    # -- verbose
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
       push(@a,'-j',"$cpath/slicer/$conf{slicer}/fdmprinter.def.json");
       #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
@@ -1785,7 +1786,11 @@ sub slicePart {
       }
       print ", slice" unless($conf{quiet});
       print ", exec: @a\n" if($conf{verbose});
-      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});      # -- CuraEngine won't like closed/redirected stdout
+      if($conf{slicer}eq'cura5') {
+         ($exit,$out) = execProgram(@a,{close_stderr=>1,close_stdout=>1,log_stderr=>'/dev/null',log_stdout=>$conf{verbose}<2?'/dev/null':0});
+      } else {
+         ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});  # -- CuraEngine-3.x & 4.x won't like closed/redirected stdout
+      }
    
    } else {
       unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l|voxgl|enoch|goslice)/) {
@@ -2635,7 +2640,6 @@ sub execProgram {
    my(@a) = @_;
    my $arg = ref(@a[$#a]) eq 'HASH' ? pop(@a) : { close_stdout=>1, close_stderr=>1, log_stdout=>1, log_stderr=>1 };
 
-
    $n_log++;
    my $ltmp = "/tmp/$me-$$-${n_log}.log";
 
@@ -2646,8 +2650,22 @@ sub execProgram {
       close STDERR if($arg->{close_stderr});
       open(LOG,">",$ltmp);    # -- open log file
       select LOG; $| = 1;
-      *STDERR = *LOG if($arg->{log_sterr});
-      *STDOUT = *LOG if($arg->{log_stdout});
+      if($arg->{log_stderr}) {
+         if($arg->{log_stderr} =~ /^\d+$/) {
+            *STDERR = *LOG;
+         } else {
+            open(LOG,">",$arg->{log_stderr});
+            *STDERR = *LOG;
+         }
+      }
+      if($arg->{log_stdout}) {
+         if($arg->{log_stdout} =~ /^\d+$/) {
+            *STDOUT = *LOG;
+         } else {
+            open(LOG,">",$arg->{log_stdout});
+            *STDOUT = *LOG;
+         }
+      }
       exec(@a);
       # -- never reaches here
    }

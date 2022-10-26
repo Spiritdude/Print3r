@@ -17,6 +17,12 @@
          "stl" : 1
       }
    },
+   "cura5" : {
+      "exe" : "CuraEngine5",
+      "formats" : {
+         "stl" : 1
+      }
+   },
    "curax" : {
       "exe" : "CuraEngineX",
       "formats" : {
