@@ -26,6 +26,7 @@ print3r preview cube.gcode
 
 ## Changelog
 2022:
+- 0.3.18: support CuraEngine-5.x / cura5 better
 - 0.3.17: adding locks for avoiding to print simulatenously to the same printer, better support for cura-slicer & CuraEngine 5.x
 - 0.3.16: `--scad` with `--scad.`<var>=<val> to pass variables to OpenSCAD models, experimental support for `metatron-` and `enoch-slicer` (--slicer=`metatron` or `enoch`)
 - 0.3.15: experimental support for voxgl-slicer (`--slicer=voxgl`)
