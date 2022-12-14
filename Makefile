@@ -1,5 +1,5 @@
 NAME=Print3r
-VERSION=0.3.18
+VERSION=0.3.19
 #DEST_BIN=~/bin/
 DEST_BIN=/usr/bin
 DEST_SHARE=/usr/share

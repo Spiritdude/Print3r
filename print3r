@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2022/11/27: 0.3.19: --device/-d --printer/-p --slicer/-s short-cuts added
 # 2022/10/17: 0.3.18: support CuraEngine-5.x / cura5 better
 # 2022/08/03: 0.3.17: adding locks for avoiding to print simulatenously to the same printer, better support for cura-slicer & CuraEngine 5.x
 # 2022/04/27: 0.3.16: --scad with --scad.<var>=<val> to pass variables to OpenSCAD models, experimental support for metatron- and enoch-slicer
@@ -69,7 +70,7 @@ use FileHandle;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.18';
+my $VERSION = '0.3.19';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -95,6 +96,7 @@ my @paths = ('./settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/u
 
 # -- short to long option mapping
 my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer','k'=>'keep');
+my %s2a = ('d'=>1, 'p'=>1, 's'=>1, 'b'=>1);
 
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
@@ -139,11 +141,16 @@ foreach (split(/:/,$ENV{PRINT3R})) {
    $k = $1, $k =~ s/\-/_/g, $conf{$k} = '\1', $conf_src{$k} = 'env' if(/^([\w\-\.]+)$/);
    ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} = $v, $conf_src{$k} = 'env', next if(/^([\w\-\.]+)=(.*)$/);
 }
-foreach (@ARGV) {                # -- parse command-line arguments
+#foreach (@ARGV) {                # -- parse command-line arguments
+while($_=shift(@ARGV)) {
    if(/^-(\w+)$/) {
       foreach my $f (split(/|/,$1)) {     # -- '-v' or '-vv' -> "--verbose=2"
-         $conf{$s2l{$f}}++;
-         $conf_src{$f} = 'cli';
+         if($s2l{$f} && $s2a{$f}) {
+            $conf{$s2l{$f}} = shift(@ARGV);
+         } else {
+            $conf{$s2l{$f}}++;
+         }
+         $conf_src{$s2l{$f}} = 'cli';
       }
       next;
    }
@@ -286,6 +293,7 @@ if($conf{printer}) {
 # -- evaluate macros (e.g. "@thin")
 my @a;
 foreach(@f) {
+#while($_ = shift(@f)) {
    if(/^@([\w\-\+\/]+)/) {         # -- evaluate macros
       my $m = $1;
       my $done;
@@ -3832,8 +3840,9 @@ sub openSerial {
       sleep 0.8;
       printerSend($com,$gcode);
       my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
-      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/UUID\s*:\s*(\S+)/);
-      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/Board ID\s*:\s*(\S+)/);
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/UUID\s*:\s*(\S+)/);         # Marlin
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/Board ID\s*:\s*(\S+)/);     # RRF [1]
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/MAC address\s*(\S+)/);      # RRF [2]: as last resort we get MAC address (ethernet or wifi) 
    }
 
    if($uuid) {        # -- metadata like UUID requested
