@@ -11,6 +11,7 @@
 #  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
 #
 # History:
+# 2022/12/16: 0.3.20: new @revo-{yellow,red,blue,green,pink} macros, -o <output> added
 # 2022/11/27: 0.3.19: --device/-d --printer/-p --slicer/-s short-cuts added
 # 2022/10/17: 0.3.18: support CuraEngine-5.x / cura5 better
 # 2022/08/03: 0.3.17: adding locks for avoiding to print simulatenously to the same printer, better support for cura-slicer & CuraEngine 5.x
@@ -70,7 +71,7 @@ use FileHandle;
 # use Algorithm::BinPack::2D;
 
 my $NAME = "Print3r";
-my $VERSION = '0.3.19';
+my $VERSION = '0.3.20';
 my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
 my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
 my %conf_ch;         # -- conf changed from defaults
@@ -95,8 +96,8 @@ $conf{scadimport} = 'use';
 my @paths = ('./settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/usr/share/print3r");
 
 # -- short to long option mapping
-my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer','k'=>'keep');
-my %s2a = ('d'=>1, 'p'=>1, 's'=>1, 'b'=>1);
+my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer','k'=>'keep','o'=>'output');
+my %s2a = ('d'=>1, 'p'=>1, 's'=>1, 'b'=>1, 'o'=>'output');
 
 # -- intern option (not to pass on to converters)
 my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
@@ -667,12 +668,17 @@ if($cmd eq 'analyze') {          # -- not yet
       --verbose or -v or -vv  increase verbosity
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: $conf{baudrate}
+         -b <n>
       --device=<d>            set device, default: $conf{device}
+         -d <device>
       --slicer=<slicer>       set slicer, default: $conf{slicer}
+         -s <slicer>
                                  ".join(", ",sort keys %$slicer)."
       --printer=<name>        config of printer, default: $conf{printer}
+         -p <name>
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
+         -o <file>
       --scad                  consider all arguments as actual OpenSCAD code (not files)
       --scadlib=<files>       define OpenSCAD files separated by \",\" or \":\"
                               by default '$conf{scadimport} <file>', change with --scadimport=include
