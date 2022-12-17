@@ -717,10 +717,10 @@ if($cmd eq 'analyze') {          # -- not yet
    examples:
       export PRINT3R \"printer=my_printer\" --OR-- setenv PRINT3R \"printer=my_printer\"
       $me slice cube.stl
-      $me --layer-height=0.2 --output=test.gcode slice cube.stl
-      $me --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
-      $me --printer=corexy --device=/dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
-      $me --printer=ender3 --device=tcp:192.168.0.2 --layer-height=0.25 print cube.stl
+      $me --layer-height=0.2 -o test.gcode slice cube.stl
+      $me -p ender3 -d /dev/ttyUSB1 print test.gcode
+      $me -p corexy -d /dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
+      $me -p ender3 -d tcp:192.168.0.2 --layer-height=0.25 print cube.stl
       $me print cube.scad
       $me print parametric.scad --scad.A=20 --scad.B=30
       $me --scad print \"cube(20)\"

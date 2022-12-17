@@ -3,12 +3,12 @@
 ## Introduction
 
 **Print3r** is a command-line tool (without GUI) to print 3d parts (.gcode, .stl, .amf, .3mf, .obj, .off, .scad, .sscad, etc) 
-to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, PrusaSlicer, SuperSlicer, CuraEngine 3.x, CuraEngine 4.x, Cura 15.04 and a few more).
+to 3d printers, utilizing a slicer of your choice (Slic3r, Slic3r PE, PrusaSlicer, SuperSlicer, CuraEngine 3.x, CuraEngine 4.x, CuraEngine 5.x, Cura 15.04 and a few more).
 
 ### Examples
 ```
-print3r --printer=prusa-i3 print cube.scad
-print3r --printer=ender3 --device=/dev/ttyUSB1 print cube.stl
+print3r -p prusa-i3 print cube.scad
+print3r -p ender3 -d /dev/ttyUSB1 print cube.stl
 print3r preview cube.gcode
 ```
 
@@ -26,6 +26,8 @@ print3r preview cube.gcode
 
 ## Changelog
 2022:
+- 0.3.20: new `@revo-{yellow,red,blue,green,pink}` macros, `-o <output>` added
+- 0.3.19: `--device/-d --printer/-p --slicer/-s` short-cuts added
 - 0.3.18: support CuraEngine-5.x / cura5 better
 - 0.3.17: adding locks for avoiding to print simulatenously to the same printer, better support for cura-slicer & CuraEngine 5.x
 - 0.3.16: `--scad` with `--scad.`<var>=<val> to pass variables to OpenSCAD models, experimental support for `metatron-` and `enoch-slicer` (--slicer=`metatron` or `enoch`)
@@ -103,20 +105,27 @@ See [Profiles](https://github.com/Spiritdude/Print3r/wiki/Print3r:-Profiles) how
 
 ## Usage
 ```
-Print3r (print3r) 0.3.10 USAGE: [<options>] <cmd> <file1> [<...>]
+Print3r (print3r) 0.3.20 USAGE: [<options>] <cmd> <file1> [<...>]
 
    options:
       --verbose or -v or -vv  increase verbosity
       --quiet or -q           no output except fatal errors
       --baudrate=<n>          set baudrate, default: 115200
+         -b <n>
       --device=<d>            set device, default: /dev/ttyUSB0
+         -d <device>
       --slicer=<slicer>       set slicer, default: slic3r
-                                 5dmaker, cura, cura-legacy, cura-slicer, cura4, kirimoto, mandoline, prusa, slic3r, slic3r-pe, slicer4rtn
+         -s <slicer>
+                                 5dmaker, cura, cura-legacy, cura-slicer, cura4, cura5, curax, enoch, goslice, kirimoto, lab, mandol
+ine, metatron, prusa, slic3r, slic3r-pe, slicer4rtn, super, vox3l, voxgl, zplus
       --printer=<name>        config of printer, default: default
+         -p <name>
       --version               display version and exit
       --output=<file>         define output file for 'slice' and 'render' command
+         -o <file>
       --scad                  consider all arguments as actual OpenSCAD code (not files)
       --scadlib=<files>       define OpenSCAD files separated by "," or ":"
+                              by default 'use <file>', change with --scadimport=include
       --prepend-gcode=...     add manually start-gcode
       --layer-gcode=...       insert gcode at layer change
       --display_update=off    turn built-in display updates off
@@ -145,17 +154,21 @@ Print3r (print3r) 0.3.10 USAGE: [<options>] <cmd> <file1> [<...>]
       gconsole                start gcode console
       client                  map USB connected printer to network (per device)
       log [<term>|<#num>]     list log of finished prints, use -v for details or --format=json to dump JSON
+                                 use --output=<k>[,<k1>] to list particular keys
+                                 if num is negative, the last entries are shown, e.g. '#-5'
       help
-
+   
    examples:
-      export PRINT3R "printer=my_printer" --OR-- setenv PRINT3R "printer=my_printer"
+     export PRINT3R "printer=my_printer" --OR-- setenv PRINT3R "printer=my_printer"
       print3r slice cube.stl
-      print3r --layer-height=0.2 --output=test.gcode slice cube.stl
-      print3r --printer=ender3 --device=/dev/ttyUSB1 print test.gcode
-      print3r --printer=corexy --device=/dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
-      print3r --printer=ender3 --device=tcp:192.168.0.2 --layer-height=0.25 print cube.stl
+      print3r --layer-height=0.2 -o test.gcode slice cube.stl
+      print3r -p ender3 -d /dev/ttyUSB1 print test.gcode
+      print3r -p corexy -d /dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
+      print3r -p ender3 -d tcp:192.168.0.2 --layer-height=0.25 print cube.stl
       print3r print cube.scad
+      print3r print parametric.scad --scad.A=20 --scad.B=30
       print3r --scad print "cube(20)"
+      print3r --scad print "cube(a)" --scad.a=20
       print3r log
       print3r --output=uid,layer_height log cube
       print3r log -v '#12'
@@ -174,6 +187,7 @@ Print3r (print3r) 0.3.10 USAGE: [<options>] <cmd> <file1> [<...>]
 print3r --fill-density=0 --layer-height=0.2 print cube.scad
 print3r --print-center=100,100 print cube.scad
 print3r --printer=ender3.ini --device=/dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
+print3r -p ender3.ini -d /dev/ttyUSB1 --random-placement --rotate=45,0,0 print cube.scad
 print3r --multiply-part=3 --scale=50% print cube.scad
 ```
 
